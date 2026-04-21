@@ -1,5 +1,5 @@
 # main.py
-# CYBER TRADE WIN v2.2 — Main Loop Completo com LLM e Indicadores Reais
+# CYBER TRADE WIN v2.4 — Main Loop Completo com LLM e Indicadores Reais
 
 import asyncio
 import logging
@@ -18,6 +18,14 @@ from utils.indicadores import (
     detectar_regime,
     detectar_tendencia,
     calcular_confianca
+)
+from utils.pixel_agents import (
+    print_pixel_header,
+    print_agente,
+    print_status_sistema,
+    print_decisao,
+    print_ciclo,
+    salvar_html
 )
 
 logging.basicConfig(
@@ -79,6 +87,9 @@ class CyberTradeWIN:
 
     async def _loop(self):
         ciclo = 0
+        print_pixel_header()
+        logger.info("[CYBER] WIN v2.4 - Pixel Agents Mode")
+        
         while True:
             ciclo += 1
             logger.info(f"[CYCLE {ciclo}] Running...")
@@ -104,6 +115,38 @@ class CyberTradeWIN:
             book = await self.data_provider.get_book()
             trades = await self.data_provider.get_trades()
 
+            if len(candles_5m) >= 20:
+                indicadores = self._calcular_indicadores(candles_5m)
+                fluxo = self._calcular_fluxo(book, trades)
+                contexto = await self._calcular_contexto()
+
+                capital_atual = self.redis_state.get_capital() or 1000.0
+                resultado_hoje = self.db.get_resultado_hoje()
+                pnl_dia_pct = (resultado_hoje / capital_atual) * 100 if capital_atual > 0 else 0.0
+                self.operacoes_hoje = self.db.get_trades_hoje()
+
+                print_ciclo(num)
+
+                print_agente("architect", {
+                    "Sinal": indicadores.get("sinal"),
+                    "Confianca": indicadores.get("confianca"),
+                    "EMA9": indicadores.get("ema9_5m"),
+                    "ATR14": indicadores.get("atr14_5m"),
+                    "RSI14": indicadores.get("rsi14_5m"),
+                }, "🏗️")
+
+                print_agente("morpheus", {
+                    "Fluxo": fluxo.get("direcao_fluxo"),
+                    "Forca": fluxo.get("forca_fluxo"),
+                    "CVD": fluxo.get("cvd_total"),
+                }, "🌊")
+
+                print_agente("oracle", {
+                    "Regime": contexto.get("regime_mercado"),
+                    "Macro": contexto.get("status_macro"),
+                    "Tendencia": contexto.get("tendencia_mercado"),
+                }, "🔮")
+
             logger.info(f"[CYCLE {num}] Preco: {preco_atual} | Candles: {len(candles_5m)}")
 
             self.redis_state.set("preco_atual_win", str(preco_atual))
@@ -120,6 +163,31 @@ class CyberTradeWIN:
             logger.info(f"[CYCLE {num}] Step 3: Decision = {resultado.get('decisao', 'N/A')}")
 
             self._salvar_log("NEO", resultado.get('decisao', 'N/A'))
+
+            print_agente("neo", {
+                "Decisao": resultado.get("decisao"),
+                "Score": resultado.get("score_final"),
+                "Direcao": resultado.get("direcao"),
+                "Motivo": resultado.get("motivo"),
+            }, "🎯")
+
+            print_status_sistema(preco_atual, pnl_dia_pct, self.operacoes_hoje, "PAPER" if PAPER_MODE else "REAL")
+
+            salvar_html({
+                "agentes": {
+                    "architect": indicadores,
+                    "morpheus": fluxo,
+                    "oracle": contexto,
+                    "neo": resultado,
+                },
+                "sistema": {
+                    "preco": preco_atual,
+                    "pnl": pnl_dia_pct,
+                    "ops": self.operacoes_hoje,
+                    "modo": "PAPER" if PAPER_MODE else "REAL",
+                },
+                "decisao": resultado,
+            })
 
             if resultado.get("decisao") == "ARMAR":
                 score = resultado.get("score_final", 0)
