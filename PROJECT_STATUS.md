@@ -1,7 +1,7 @@
 # CYBER TRADE WIN — MASTER PROJECT STATUS
 **Data:** 21/04/2026
 **Versão:** v3.0 PATCHED
-**Status:** ✅ Todos os bugs corrigidos
+**Status:** ✅ Todos os bugs corrigidos | Janela deslizante histórica
 
 ---
 

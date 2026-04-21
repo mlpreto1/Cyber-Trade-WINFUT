@@ -1,5 +1,5 @@
 # infrastructure/profit_bridge.py
-# CYBER TRADE WIN v2.1 — Profit DLL Bridge (mock para testes)
+# CYBER TRADE WIN v3.0 — Profit DLL Bridge (mock para testes)
 
 import logging
 from typing import Dict, Optional

@@ -1,5 +1,5 @@
 # utils/capital_levels.py
-# CYBER TRADE WIN v2.1
+# CYBER TRADE WIN v3.0
 
 NIVEIS = [
     {"nivel":1,"nome":"INICIANTE","capital_min":1000.0,"capital_max":1999.99,"max_contratos":1,"score_minimo":72,"stop_day_pct":5.0,"stop_maximo_pts":50.0},

@@ -50,7 +50,7 @@ class CyberTradeWIN:
         self.operacoes_hoje = 0
 
     async def iniciar(self):
-        logger.info("[CYBER] WIN v2.2 started")
+        logger.info("[CYBER] WIN v3.0 started")
         logger.info(f"[MODE] {'PAPER' if PAPER_MODE else 'REAL'}")
         logger.info(f"[DATA] Source: {DATA_SOURCE}")
 
@@ -79,7 +79,7 @@ class CyberTradeWIN:
             self.exec = ExecAgent(self.redis_state, self.db, self.tg)
 
             logger.info("[OK] Components initialized")
-            self.tg.alertar("[OK] Cyber Trade WIN v2.2 started!")
+            self.tg.alertar("[OK] Cyber Trade WIN v3.0 started!")
         except Exception as e:
             logger.error(f"[ERR] Init: {e}")
             import traceback
@@ -88,7 +88,7 @@ class CyberTradeWIN:
     async def _loop(self):
         ciclo = 0
         print_pixel_header()
-        logger.info("[CYBER] WIN v2.4 - Pixel Agents Mode")
+        logger.info("[CYBER] WIN v3.0 - Pixel Agents Mode")
         
         while True:
             ciclo += 1

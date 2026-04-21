@@ -1,2 +1,2 @@
 # utils/__init__.py
-# CYBER TRADE WIN v2.1
+# CYBER TRADE WIN v3.0

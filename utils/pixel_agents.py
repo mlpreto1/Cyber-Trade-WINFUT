@@ -47,7 +47,7 @@ def print_pixel_header():
 ║                    ██║  ██║██╔══╝  ╚════██║                    ║
 ║                    ██████╔╝███████╗███████║                    ║
 ║                    ╚═════╝ ╚══════╝╚══════╝                    ║
-║                       AGENTS v2.4 - CYBER TRADE                ║
+║                       AGENTS v3.0 - CYBER TRADE                ║
 ╚══════════════════════════════════════════════════════════╝{RESET}
 """)
 
@@ -283,7 +283,7 @@ def gerar_html(estado: dict) -> str:
         </div>
         
         <div class="footer">
-            CYBER TRADE WIN v2.4 | Atualizado: {datetime.now().strftime('%H:%M:%S')}
+            CYBER TRADE WIN v3.0 | Atualizado: {datetime.now().strftime('%H:%M:%S')}
         </div>
     </div>
 </body>

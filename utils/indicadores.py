@@ -1,5 +1,5 @@
 # utils/indicadores.py
-# Cyber Trade WIN v2.2 — Indicadores Técnicos Reais
+# Cyber Trade WIN v3.0 — Indicadores Técnicos Reais
 
 import pandas as pd
 from typing import List, Dict

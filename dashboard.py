@@ -7,9 +7,9 @@ import json
 import time
 from datetime import datetime
 
-st.set_page_config(page_title="Cyber Trade WIN v2.2", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Cyber Trade WIN v3.0", page_icon="📈", layout="wide")
 
-st.title("📈 Cyber Trade WIN v2.2")
+st.title("📈 Cyber Trade WIN v3.0")
 
 COLORS = {
     "NEO": "#00ff00",
@@ -63,7 +63,7 @@ while True:
                 _redis_conn = conectar_redis()
                 r = _redis_conn
 
-        st.title("📈 Cyber Trade WIN v2.2")
+        st.title("📈 Cyber Trade WIN v3.0")
 
         if r:
             col1, col2, col3, col4, col5 = st.columns(5)

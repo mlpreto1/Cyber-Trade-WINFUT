@@ -1,5 +1,5 @@
 # infrastructure/cost_monitor.py
-# CYBER TRADE WIN v2.1
+# CYBER TRADE WIN v3.0
 # ✅ CORRIGIDO: Lógica 80%/100% reordenada
 
 import os

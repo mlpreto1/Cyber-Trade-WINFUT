@@ -1,6 +1,6 @@
 {
-  "version": "WIN-2.1",
-  "description": "Cyber Trade WIN v2.1 — WINFUT | Skynet 8 Agentes | Cutoff 17:30",
+  "version": "WIN-3.0",
+  "description": "Cyber Trade WIN v3.0 — WINFUT | Janela deslizante historica | Cutoff 17:00",
   "gateway": "localhost:3000",
   "contrato": "WINFUT",
   "valor_ponto": 0.20,

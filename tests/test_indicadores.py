@@ -1,5 +1,5 @@
 # tests/test_indicadores.py
-# Cyber Trade WIN v2.2 — Testes para indicadores técnicos
+# Cyber Trade WIN v3.0 — Testes para indicadores técnicos
 
 import sys
 import os
@@ -129,7 +129,7 @@ def test_calcular_confianca():
 
 def run_all_tests():
     print("\n" + "="*50)
-    print("CYBER TRADE WIN v2.2 — Testes de Indicadores")
+    print("CYBER TRADE WIN v3.0 — Testes de Indicadores")
     print("="*50 + "\n")
 
     tests = [

@@ -1,5 +1,5 @@
 # infrastructure/database.py
-# CYBER TRADE WIN v2.1
+# CYBER TRADE WIN v3.0
 
 import sqlite3
 import json
