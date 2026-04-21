@@ -26,8 +26,8 @@ else:
     print("\n2. Tentando com path do terminal...")
     # Tentar com path
     paths = [
-        "C:/Program Files/MetaTrader 5/terminal64.exe",
-        "C:/Program Files (x86)/MetaTrader 5/terminal.exe",
+        "C:/Program Files/Clear Investimentos MT5 Terminal/terminal64.exe",
+        "C:/Program Files/Clear Investimentos MT5 Terminal/terminal.exe",
     ]
     for path in paths:
         try:

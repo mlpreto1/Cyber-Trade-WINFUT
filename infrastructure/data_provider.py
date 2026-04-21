@@ -157,8 +157,8 @@ class DataProvider:
             return True
         try:
             MT5_PATHS = [
-                "C:/Program Files/MetaTrader 5/terminal64.exe",
-                "C:/Program Files (x86)/MetaTrader 5/terminal.exe",
+                "C:/Program Files/Clear Investimentos MT5 Terminal/terminal64.exe",
+                "C:/Program Files/Clear Investimentos MT5 Terminal/terminal.exe",
             ]
             import os
             for path in MT5_PATHS:
