@@ -119,15 +119,13 @@ def _dia_de_pregao() -> bool:
         return False
     return True
 
-def _ultimo_dia_util_4_semanas_atras() -> datetime:
+def _ultimo_dia_util() -> datetime:
     agora = datetime.now()
-    semana_passada = agora - timedelta(weeks=4)
-    
-    for i in range(30):
-        dia = semana_passada - timedelta(days=i)
+    for i in range(10):
+        dia = agora - timedelta(days=i)
         if dia.weekday() < 5:
             return dia
-    return semana_passada
+    return agora - timedelta(days=1)
 
 def _horario_mercado_aberto() -> bool:
     agora = datetime.now()
@@ -335,13 +333,11 @@ class DataProvider:
             return []
 
         tf = MT5_TIMEFRAMES.get(timeframe, mt5.TIMEFRAME_M5)
-        start_time = _ultimo_dia_util_4_semanas_atras()
 
         for sym in MT5_SYMBOLS:
             try:
                 mt5.symbol_select(sym, True)
-                now = datetime.now()
-                rates = mt5.copy_rates_range(sym, tf, start_time, now)
+                rates = mt5.copy_rates_from_pos(sym, tf, 0, candles)
                 if rates is not None and len(rates) > 0:
                     candles_data = []
                     for r in rates:
@@ -353,8 +349,8 @@ class DataProvider:
                             "close": float(r[4]),
                             "volume": int(r[5]),
                         })
-                    logger.info(f"[MT5] Historico desde {start_time.date()}: {len(candles_data)} candles")
-                    return candles_data[-candles:]
+                    logger.info(f"[MT5] Historico {sym}: {len(candles_data)} candles (ultimos {candles})")
+                    return candles_data
             except Exception as e:
                 logger.warning(f"[MT5] historico error {sym}: {e}")
                 continue
