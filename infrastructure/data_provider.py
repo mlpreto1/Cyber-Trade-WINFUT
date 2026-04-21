@@ -121,17 +121,18 @@ def _dia_de_pregao() -> bool:
 
 def _dia_util_4_semanas_atras() -> datetime:
     agora = datetime.now()
-    dias_passados = 28
-    for i in range(dias_passados + 5):
+    for i in range(28, 40):
         dia = agora - timedelta(days=i)
-        if dia.weekday() < 5:
+        if dia.weekday() < 5 and (dia.month, dia.day) not in FERIADOS_B3_2026:
+            logger.info(f"[MT5] 4 semanas atrata: {dia.date()} (weekday={dia.weekday()})")
             return dia
-    return agora - timedelta(days=dias_passados)
+    return agora - timedelta(days=28)
 
 def _proximo_dia_util(dia: datetime) -> datetime:
     for i in range(1, 10):
         novo_dia = dia - timedelta(days=i)
-        if novo_dia.weekday() < 5:
+        if novo_dia.weekday() < 5 and (novo_dia.month, novo_dia.day) not in FERIADOS_B3_2026:
+            logger.info(f"[MT5] Proximo dia util: {novo_dia.date()}")
             return novo_dia
     return dia - timedelta(days=1)
 
@@ -387,7 +388,7 @@ class DataProvider:
         for sym in MT5_SYMBOLS:
             try:
                 mt5.symbol_select(sym, True)
-                rates = mt5.copy_rates_from_pos(sym, tf, 0, candles * 3)
+                rates = mt5.copy_rates_from_pos(sym, tf, 0, candles + 10)
                 if rates is not None and len(rates) > 0:
                     candles_data = []
                     for r in rates:
@@ -412,8 +413,8 @@ class DataProvider:
                     if dia_offset < len(dias_ordenados):
                         dia_selecionado = dias_ordenados[dia_offset]
                         dados_dia = dias_encontrados[dia_selecionado]
-                        logger.info(f"[MT5] Dia {dia_selecionado} (offset={dia_offset}): {len(dados_dia)} candles")
-                        return dados_dia[-candles:]
+                        logger.info(f"[MT5] Dia {dia_selecionado} (offset={dia_offset}): {len(dados_dia)} candles, retornando {min(candles, len(dados_dia))}")
+                        return dados_dia[:min(candles, len(dados_dia))]
                     else:
                         logger.warning(f"[MT5] Nao ha mais dias disponiveis (offset={dia_offset})")
                         return []
