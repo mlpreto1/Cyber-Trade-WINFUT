@@ -396,14 +396,22 @@ class DataProvider:
 
         tf = MT5_TIMEFRAMES.get(timeframe, mt5.TIMEFRAME_M5)
 
+        target = self._dia_inicial
+        if dia_offset > 0:
+            for _ in range(dia_offset):
+                target = _proximo_dia_util(target)
+
+        from_date = datetime.combine(target.date(), datetime.min.time())
+        to_date = from_date + timedelta(days=1)
+
         for sym in MT5_SYMBOLS:
             try:
                 mt5.symbol_select(sym, True)
-                rates = mt5.copy_rates_from_pos(sym, tf, 0, candles + 10)
+                rates = mt5.copy_rates_range(sym, tf, from_date, to_date)
                 if rates is not None and len(rates) > 0:
-                    candles_data = []
+                    dados = []
                     for r in rates:
-                        candles_data.append({
+                        dados.append({
                             "timestamp": datetime.fromtimestamp(r[0]).isoformat(),
                             "open": float(r[1]),
                             "high": float(r[2]),
@@ -411,28 +419,14 @@ class DataProvider:
                             "close": float(r[4]),
                             "volume": int(r[5]),
                         })
-                    
-                    dias_encontrados = {}
-                    for c in candles_data:
-                        dia = c["timestamp"][:10]
-                        if dia not in dias_encontrados:
-                            dias_encontrados[dia] = []
-                        dias_encontrados[dia].append(c)
-                    
-                    dias_ordenados = sorted(dias_encontrados.keys(), reverse=True)
-                    
-                    if dia_offset < len(dias_ordenados):
-                        dia_selecionado = dias_ordenados[dia_offset]
-                        dados_dia = dias_encontrados[dia_selecionado]
-                        logger.info(f"[MT5] Dia {dia_selecionado} (offset={dia_offset}): {len(dados_dia)} candles, retornando {min(candles, len(dados_dia))}")
-                        return dados_dia[:min(candles, len(dados_dia))]
-                    else:
-                        logger.warning(f"[MT5] Nao ha mais dias disponiveis (offset={dia_offset})")
-                        return []
+                    logger.info(f"[MT5] {target.date()} ({sym}): {len(dados)} candles")
+                    return dados[:candles]
+                else:
+                    logger.warning(f"[MT5] Sem dados para {target.date()}")
+                    return []
             except Exception as e:
-                logger.warning(f"[MT5] historico error {sym}: {e}")
+                logger.warning(f"[MT5] {sym}: {e}")
                 continue
-
         return []
 
     async def _get_book_mt5(self) -> Dict:
