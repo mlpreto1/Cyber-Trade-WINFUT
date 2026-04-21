@@ -119,13 +119,21 @@ def _dia_de_pregao() -> bool:
         return False
     return True
 
-def _ultimo_dia_util() -> datetime:
+def _dia_util_4_semanas_atras() -> datetime:
     agora = datetime.now()
-    for i in range(10):
+    dias_passados = 28
+    for i in range(dias_passados + 5):
         dia = agora - timedelta(days=i)
         if dia.weekday() < 5:
             return dia
-    return agora - timedelta(days=1)
+    return agora - timedelta(days=dias_passados)
+
+def _proximo_dia_util(dia: datetime) -> datetime:
+    for i in range(1, 10):
+        novo_dia = dia - timedelta(days=i)
+        if novo_dia.weekday() < 5:
+            return novo_dia
+    return dia - timedelta(days=1)
 
 def _horario_mercado_aberto() -> bool:
     agora = datetime.now()
@@ -144,6 +152,10 @@ class DataProvider:
         self._mt5_inicializado = False
         self._cache_candles = {}
         self._cache_ttl_segundos = 30
+        self._dia_offset = 0
+        self._dia_inicial = None
+        self._perguntou_proximo = False
+        self._ja_terminou_dia = False
 
     def set_redis(self, redis_state):
         self.redis_state = redis_state
@@ -196,10 +208,28 @@ class DataProvider:
 
         if self.source == "mt5":
             if _dia_de_pregao() and _horario_mercado_aberto():
+                self._dia_offset = 0
+                self._dia_inicial = None
+                self._perguntou_proximo = False
+                self._ja_terminou_dia = False
+                logger.info("[MT5] Mercado ABERTO - dados tempo real")
                 data = await self._buscar_mt5_candles_tempo_real(timeframe, candles)
             else:
-                logger.warning("[MT5] Mercado fechado, buscandoUltimos dias uteis")
-                data = await self._buscar_mt5_candles_historico(timeframe, candles)
+                if self._dia_inicial is None:
+                    self._dia_inicial = _dia_util_4_semanas_atras()
+                    self._dia_offset = 0
+                    self._perguntou_proximo = False
+                    self._ja_terminou_dia = False
+                    logger.warning(f"[MT5] Mercado FECHOADO - iniciando do dia {self._dia_inicial.date()}")
+                
+                data = await self._buscar_mt5_candles_por_dia(timeframe, candles, self._dia_offset)
+                
+                if data:
+                    ultimo_candle = data[-1].get("timestamp", "")[:10]
+                    if self._dia_offset == 0:
+                        logger.info(f"[MT5] Dia atual: {ultimo_candle}")
+                else:
+                    self._ja_terminou_dia = True
         elif self.source == "brapi":
             data = await self._buscar_brapi_win(timeframe, candles)
         elif self.source == "profit":
@@ -217,6 +247,8 @@ class DataProvider:
             "source": self.source,
             "dia_pregao": _dia_de_pregao(),
             "horario_aberto": _horario_mercado_aberto(),
+            "dia_offset": self._dia_offset,
+            "ja_terminou": self._ja_terminou_dia,
         }
         cache_key = f"{self.source}:5min:50"
         cached = self._cache_candles.get(cache_key)
@@ -229,6 +261,24 @@ class DataProvider:
                 info["ultimo_candle"] = ultimo[:10] if ultimo else ""
                 info["qtd_candles"] = len(dados)
         return info
+
+    def pedido_proximo_dia(self) -> tuple:
+        if self._ja_terminou_dia or self._perguntou_proximo:
+            return (False, None)
+        if not _dia_de_pregao() and not _horario_mercado_aberto():
+            return (True, self._dia_offset)
+        return (False, None)
+
+    def avanca_proximo_dia(self):
+        if self._dia_offset == 0 and self._dia_inicial:
+            data = self._dia_inicial
+            self._dia_offset = 1
+        else:
+            data = _proximo_dia_util(self._dia_inicial)
+        self._perguntou_proximo = True
+        self._ja_terminou_dia = False
+        self._cache_candles = {}
+        logger.info(f"[MT5] Avanzando para offset {self._dia_offset}: {data.date()}")
 
     async def get_preco_atual(self) -> float:
         if self.source == "mt5":
@@ -328,7 +378,7 @@ class DataProvider:
 
         return []
 
-    async def _buscar_mt5_candles_historico(self, timeframe: str, candles: int) -> List[dict]:
+    async def _buscar_mt5_candles_por_dia(self, timeframe: str, candles: int, dia_offset: int) -> List[dict]:
         if not self._init_mt5():
             return []
 
@@ -337,7 +387,7 @@ class DataProvider:
         for sym in MT5_SYMBOLS:
             try:
                 mt5.symbol_select(sym, True)
-                rates = mt5.copy_rates_from_pos(sym, tf, 0, candles)
+                rates = mt5.copy_rates_from_pos(sym, tf, 0, candles * 3)
                 if rates is not None and len(rates) > 0:
                     candles_data = []
                     for r in rates:
@@ -349,8 +399,24 @@ class DataProvider:
                             "close": float(r[4]),
                             "volume": int(r[5]),
                         })
-                    logger.info(f"[MT5] Historico {sym}: {len(candles_data)} candles (ultimos {candles})")
-                    return candles_data
+                    
+                    dias_encontrados = {}
+                    for c in candles_data:
+                        dia = c["timestamp"][:10]
+                        if dia not in dias_encontrados:
+                            dias_encontrados[dia] = []
+                        dias_encontrados[dia].append(c)
+                    
+                    dias_ordenados = sorted(dias_encontrados.keys(), reverse=True)
+                    
+                    if dia_offset < len(dias_ordenados):
+                        dia_selecionado = dias_ordenados[dia_offset]
+                        dados_dia = dias_encontrados[dia_selecionado]
+                        logger.info(f"[MT5] Dia {dia_selecionado} (offset={dia_offset}): {len(dados_dia)} candles")
+                        return dados_dia[-candles:]
+                    else:
+                        logger.warning(f"[MT5] Nao ha mais dias disponiveis (offset={dia_offset})")
+                        return []
             except Exception as e:
                 logger.warning(f"[MT5] historico error {sym}: {e}")
                 continue
