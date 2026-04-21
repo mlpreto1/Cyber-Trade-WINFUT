@@ -1,5 +1,5 @@
 # dashboard.py
-# Cyber Trade WIN v2.2 — Visual Dashboard com Refresh Real
+# Cyber Trade WIN v3.0 — Visual Dashboard com Refresh Real
 
 import streamlit as st
 import redis
@@ -51,9 +51,17 @@ def get_logs(r):
 
 placeholder = st.empty()
 
+_redis_conn = conectar_redis()
+
 while True:
     with placeholder.container():
-        r = conectar_redis()
+        r = _redis_conn
+        if r:
+            try:
+                r.ping()
+            except Exception:
+                _redis_conn = conectar_redis()
+                r = _redis_conn
 
         st.title("📈 Cyber Trade WIN v2.2")
 
@@ -80,7 +88,6 @@ while True:
             info_dados = {}
             if info_dados_str:
                 try:
-                    import json
                     info_dados = json.loads(info_dados_str)
                 except:
                     pass

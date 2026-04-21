@@ -1,5 +1,5 @@
 # infrastructure/redis_state.py
-# CYBER TRADE WIN v2.1 — Redis real com fallback mock
+# CYBER TRADE WIN v3.0 — Redis real com fallback mock
 
 import json
 import logging
@@ -56,11 +56,14 @@ class RedisState:
             return self._mock_data.get(key)
         return None
 
-    def set(self, key: str, value: str):
+    def set(self, key: str, value: str, ex: int = None):
         client = _get_redis()
         if client:
             try:
-                client.set(key, value)
+                if ex:
+                    client.set(key, value, ex=ex)
+                else:
+                    client.set(key, value)
                 return
             except Exception as e:
                 logger.warning(f"Redis set error: {e}")

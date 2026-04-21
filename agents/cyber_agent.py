@@ -1,5 +1,5 @@
 # agents/cyber_agent.py
-# CYBER TRADE WIN v2.1 — NEO Agent com LLM
+# CYBER TRADE WIN v3.0 — NEO Agent com LLM
 
 import json
 import logging

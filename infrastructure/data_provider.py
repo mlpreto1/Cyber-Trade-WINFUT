@@ -1,5 +1,5 @@
 # infrastructure/data_provider.py
-# Cyber Trade WIN v2.2 — Data Provider com Fontes Reais
+# Cyber Trade WIN v3.0 — Data Provider MT5 (Yahoo removido)
 
 import asyncio
 import logging
@@ -67,7 +67,6 @@ from typing import Dict, List, Optional
 logger = logging.getLogger("data_provider")
 
 REQUESTS_AVAILABLE = True
-YFINANCE_AVAILABLE = False
 MT5_AVAILABLE = False
 
 try:
@@ -154,7 +153,7 @@ def _horario_mercado_aberto() -> bool:
 
 
 class DataProvider:
-    def __init__(self, source: str = "yahoo"):
+    def __init__(self, source: str = "mt5"):
         self.source = source
         self.redis_state = None
         self._ultimo_preco = 130000.0

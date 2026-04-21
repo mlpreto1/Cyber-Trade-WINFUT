@@ -1,5 +1,5 @@
 # main.py
-# CYBER TRADE WIN v2.6 — Mercado Fechado = Dados Históricos
+# CYBER TRADE WIN v3.0 — PATCHED: Cutoff 17:00, Heartbeat, CVD Tape, Cache IBOV
 
 import asyncio
 import logging
@@ -35,7 +35,7 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 PAPER_MODE = os.getenv("PAPER_MODE", "true").lower() == "true"
-DATA_SOURCE = os.getenv("DATA_SOURCE", "yahoo")
+DATA_SOURCE = os.getenv("DATA_SOURCE", "mt5")
 
 
 class CyberTradeWIN:
@@ -93,6 +93,11 @@ class CyberTradeWIN:
         while True:
             ciclo += 1
             logger.info(f"[CYCLE {ciclo}] Running...")
+            # Heartbeat para o Watchdog
+            try:
+                self.redis_state.set("heartbeat_main", datetime.now().isoformat(), ex=90)
+            except Exception:
+                pass
 
             # Poll Telegram callbacks
             await self._poll_telegram()
@@ -120,8 +125,9 @@ class CyberTradeWIN:
             logger.debug(f"Telegram poll: {e}")
 
     def _cutoff_atingido(self) -> bool:
-        agora = datetime.now().time()
-        return agora.hour >= 17 and agora.minute >= 30
+        agora = datetime.now()
+        cutoff = agora.replace(hour=17, minute=0, second=0, microsecond=0)
+        return agora >= cutoff
 
     async def _ciclo_completo(self, num: int):
         try:
@@ -186,7 +192,10 @@ class CyberTradeWIN:
 
             logger.info(f"[CYCLE {num}] Step 2: Running AGENTS (LLM)...")
 
-            resultado = await self._executar_agentes(candles_5m, book, trades, preco_atual)
+            resultado = await self._executar_agentes(
+                candles_5m, book, trades, preco_atual,
+                indicadores=indicadores, fluxo=fluxo, contexto=contexto
+            )
 
             logger.info(f"[CYCLE {num}] Step 3: Decision = {resultado.get('decisao', 'N/A')}")
 
@@ -246,15 +255,19 @@ class CyberTradeWIN:
             import traceback
             traceback.print_exc()
 
-    async def _executar_agentes(self, candles, book, trades, preco_atual):
+    async def _executar_agentes(self, candles, book, trades, preco_atual,
+                                 indicadores=None, fluxo=None, contexto=None):
         try:
             from agents.cyber_agent import CyberAgent
 
             cyber = CyberAgent(self.router, self.redis_state)
 
-            indicadores = self._calcular_indicadores(candles)
-            fluxo = self._calcular_fluxo(book, trades)
-            contexto = await self._calcular_contexto()
+            if indicadores is None:
+                indicadores = self._calcular_indicadores(candles)
+            if fluxo is None:
+                fluxo = self._calcular_fluxo(book, trades)
+            if contexto is None:
+                contexto = await self._calcular_contexto()
 
             self._salvar_log("ARCHITECT", f"Sinal: {indicadores.get('sinal')} | Conf: {indicadores.get('confianca')} | ATR: {indicadores.get('atr14_5m'):.0f}")
             self._salvar_log("MORPHEUS", f"Fluxo: {fluxo.get('direcao_fluxo')} | Forca: {fluxo.get('forca_fluxo')} | CVD: {fluxo.get('cvd_total')}")
@@ -335,25 +348,60 @@ class CyberTradeWIN:
         }
 
     def _calcular_fluxo(self, book, trades):
-        bids_vol = sum(b["volume"] for b in book.get("bids", []))
-        asks_vol = sum(a["volume"] for a in book.get("asks", []))
+        cvd_tape = 0
+        vol_compra = 0
+        vol_venda = 0
 
-        cvd = bids_vol - asks_vol
+        if trades:
+            for t in trades:
+                vol = float(t.get("volume", t.get("qty", 0)))
+                side = str(t.get("side", t.get("type", ""))).upper()
+                if side in ("BUY", "COMPRA", "B", "1"):
+                    vol_compra += vol
+                    cvd_tape += vol
+                elif side in ("SELL", "VENDA", "S", "2"):
+                    vol_venda += vol
+                    cvd_tape -= vol
 
-        if cvd > 50:
+        if vol_compra == 0 and vol_venda == 0:
+            bids_vol = sum(float(b.get("volume", b.get("qty", 0))) for b in book.get("bids", []))
+            asks_vol = sum(float(a.get("volume", a.get("qty", 0))) for a in book.get("asks", []))
+            cvd_tape = bids_vol - asks_vol
+            vol_compra = bids_vol
+            vol_venda = asks_vol
+
+        vol_total = vol_compra + vol_venda
+        if vol_total == 0:
+            vol_total = 1
+
+        delta_pct = (cvd_tape / vol_total) * 100
+
+        THRESHOLD_FORTE = 20.0
+        THRESHOLD_FRACO = 5.0
+
+        if delta_pct >= THRESHOLD_FORTE:
             direcao = "COMPRA"
-            forca = min(100, 50 + cvd)
-        elif cvd < -50:
+            forca = min(100, 50 + delta_pct * 2)
+        elif delta_pct <= -THRESHOLD_FORTE:
             direcao = "VENDA"
-            forca = min(100, 50 + abs(cvd))
+            forca = min(100, 50 + abs(delta_pct) * 2)
+        elif delta_pct >= THRESHOLD_FRACO:
+            direcao = "COMPRA_FRACA"
+            forca = 30 + delta_pct
+        elif delta_pct <= -THRESHOLD_FRACO:
+            direcao = "VENDA_FRACA"
+            forca = 30 + abs(delta_pct)
         else:
             direcao = "NEUTRO"
             forca = 50
 
         return {
             "direcao_fluxo": direcao,
-            "forca_fluxo": forca,
-            "cvd_total": cvd,
+            "forca_fluxo": round(forca, 1),
+            "cvd_total": round(cvd_tape, 0),
+            "cvd_delta_pct": round(delta_pct, 2),
+            "vol_compra": round(vol_compra, 0),
+            "vol_venda": round(vol_venda, 0),
             "divergencia_cvd_preco": False,
         }
 
@@ -391,20 +439,37 @@ class CyberTradeWIN:
             "status_macro": "NORMAL",
             "regime_mercado": regime,
             "tendencia_mercado": tendencia_mercado,
-            "alerta_finalizacao": hora >= 17,
+            "alerta_finalizacao": hora >= 17 and datetime.now().minute >= 0,  # >= 17:00 avisa
             "score_contexto": 25,
             "ibov_variacao": round(ibov_variacao, 2),
         }
 
     async def _get_ibov_variacao(self) -> float:
+        CACHE_KEY = "cache_ibov_variacao"
+        CACHE_TTL = 300
+
+        try:
+            cached = self.redis_state.get(CACHE_KEY)
+            if cached is not None:
+                return float(cached)
+        except Exception:
+            pass
+
         try:
             import yfinance as yf
             ibov = yf.Ticker("^BVSP")
             h = ibov.history(period="1d")
             if not h.empty:
-                return ((h['Close'].iloc[-1] / h['Open'].iloc[0]) - 1) * 100
+                variacao = ((h['Close'].iloc[-1] / h['Open'].iloc[0]) - 1) * 100
+                try:
+                    self.redis_state.set(CACHE_KEY, str(round(variacao, 4)), ex=CACHE_TTL)
+                except Exception:
+                    pass
+                logger.debug(f"[ORACLE] IBOV atualizado: {variacao:.2f}%")
+                return variacao
         except Exception as e:
             logger.warning(f"[ORACLE] IBOV error: {e}")
+
         return 0.0
 
     def _salvar_log(self, agente: str, mensagem: str):
@@ -414,8 +479,9 @@ class CyberTradeWIN:
                 "mensagem": mensagem,
                 "timestamp": datetime.now().isoformat()
             }
-            key = f"log:{agente.lower()}:{datetime.now().strftime('%H%M%S')}"
-            self.redis_state.set(key, json.dumps(log_entry))
+            ts = datetime.now().strftime('%H%M%S%f')
+            key = f"log:{agente.lower()}:{ts}"
+            self.redis_state.set(key, json.dumps(log_entry), ex=86400)
         except Exception as e:
             logger.warning(f"Log error: {e}")
 

@@ -1,5 +1,5 @@
 # agents/base_agent.py
-# CYBER TRADE WIN v2.1
+# CYBER TRADE WIN v3.0
 
 import json
 import logging

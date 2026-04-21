@@ -1,5 +1,5 @@
 # agents/exec_agent.py
-# CYBER TRADE WIN v2.1
+# CYBER TRADE WIN v3.0
 # VALOR_PONTO_WIN = R$0,20 por contrato
 
 import asyncio
