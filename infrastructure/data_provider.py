@@ -119,11 +119,22 @@ def _dia_de_pregao() -> bool:
         return False
     return True
 
+def _eh_dia_util(dia: datetime) -> bool:
+    if dia.weekday() >= 5:
+        return False
+    FERIADOS = [
+        (1, 1), (2, 16), (2, 17), (4, 3), (4, 21), (5, 1),
+        (6, 4), (9, 7), (10, 12), (11, 2), (11, 20), (12, 24), (12, 25),
+    ]
+    if (dia.month, dia.day) in FERIADOS:
+        return False
+    return True
+
 def _dia_util_4_semanas_atras() -> datetime:
     agora = datetime.now()
     for i in range(28, 40):
         dia = agora - timedelta(days=i)
-        if dia.weekday() < 5 and (dia.month, dia.day) not in FERIADOS_B3_2026:
+        if _eh_dia_util(dia):
             logger.info(f"[MT5] 4 semanas atrata: {dia.date()} (weekday={dia.weekday()})")
             return dia
     return agora - timedelta(days=28)
@@ -131,7 +142,7 @@ def _dia_util_4_semanas_atras() -> datetime:
 def _proximo_dia_util(dia: datetime) -> datetime:
     for i in range(1, 10):
         novo_dia = dia - timedelta(days=i)
-        if novo_dia.weekday() < 5 and (novo_dia.month, novo_dia.day) not in FERIADOS_B3_2026:
+        if _eh_dia_util(novo_dia):
             logger.info(f"[MT5] Proximo dia util: {novo_dia.date()}")
             return novo_dia
     return dia - timedelta(days=1)
