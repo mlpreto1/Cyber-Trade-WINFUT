@@ -156,18 +156,23 @@ class DataProvider:
         if self._mt5_inicializado:
             return True
         try:
-            # Tentar sem parâmetros primeiro
+            MT5_PATHS = [
+                "C:/Program Files/MetaTrader 5/terminal64.exe",
+                "C:/Program Files (x86)/MetaTrader 5/terminal.exe",
+            ]
+            import os
+            for path in MT5_PATHS:
+                if os.path.exists(path):
+                    if mt5.initialize(path):
+                        self._mt5_inicializado = True
+                        logger.info(f"[MT5] Inicializado: {path}")
+                        return True
+            
             if mt5.initialize():
                 self._mt5_inicializado = True
                 logger.info("[MT5] Inicializado com sucesso")
                 return True
             
-            # Tentar com servidor Clear
-            if mt5.initialize(server="ClearInvestimentos-C"):
-                self._mt5_inicializado = True
-                logger.info("[MT5] Inicializado (Clear)")
-                return True
-                
             erro = mt5.last_error()
             logger.warning(f"[MT5] Erro ao inicializar: {erro}")
             return False
