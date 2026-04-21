@@ -1,7 +1,7 @@
 # CYBER TRADE WIN — MASTER PROJECT STATUS
 **Data:** 21/04/2026
 **Versão:** v2.6
-**Status:** ✅ Mercado Fechado — Dados Históricos 28 dias úteis, Feriados B3
+**Status:** ✅ Mercado Fechado — Dados Históricos 28 dias úteis, Feriados B3, MT5 Clear
 
 ---
 
@@ -47,8 +47,8 @@
 
 | Item | Detalhe |
 |------|---------|
-| **Corretora** | Clear (XP Investimentos) |
-| **MT5** | ✅ Grátis |
+| **Corretora** | Clear Investimentos (XP) |
+| **MT5** | ✅ C:\Program Files\Clear Investimentos MT5 Terminal |
 | **Profit Pro** | ✅ Grátis* (5 minis) |
 | **Conta** | DEMO (funcionando) |
 
