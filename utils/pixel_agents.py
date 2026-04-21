@@ -76,12 +76,14 @@ def print_agente(nome: str, dado: dict, emoji: str = None):
     print(f"{cor}└{'─' * 58}┘{RESET}")
 
 
-def print_status_sistema(preco: float, pnl: float, ops: int, modo: str):
+def print_status_sistema(preco: float, pnl: float, ops: int, modo: str, info_dados: dict = None):
+    data_info = info_dados.get("ultimo_candle", "N/A") if info_dados else "N/A"
     print(f"""
 {VERDE}╔══════════════════════════════════════════════════════════╗
 ║  {VERDE}🎯 SISTEMA{VERDE}                                          ║
 ╠══════════════════════════════════════════════════════════╣
 ║  Preço WIN     : {preco:>10.0f} pts                        ║
+║  Data Dados    : {data_info:<20}                  ║
 ║  PnL Dia       : {pnl:>+10.2f} %                        ║
 ║  Operações     : {ops:>10d}                               ║
 ║  Modo          : {modo:<10}                          ║

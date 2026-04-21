@@ -58,7 +58,7 @@ while True:
         st.title("📈 Cyber Trade WIN v2.2")
 
         if r:
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3, col4, col5 = st.columns(5)
 
             preco = get_redis_value(r, "preco_atual_win")
             with col1:
@@ -75,6 +75,18 @@ while True:
             ciclo = get_redis_value(r, "ciclo_atual") or "?"
             with col4:
                 st.metric("Ciclo", ciclo)
+
+            info_dados_str = get_redis_value(r, "info_dados")
+            info_dados = {}
+            if info_dados_str:
+                try:
+                    import json
+                    info_dados = json.loads(info_dados_str)
+                except:
+                    pass
+            data_candle = info_dados.get("ultimo_candle", "---")
+            with col5:
+                st.metric("Data Dados", data_candle)
 
             st.divider()
 

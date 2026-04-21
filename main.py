@@ -114,6 +114,7 @@ class CyberTradeWIN:
             preco_atual = await self.data_provider.get_preco_atual()
             book = await self.data_provider.get_book()
             trades = await self.data_provider.get_trades()
+            info_dados = self.data_provider.get_info_dados()
 
             if len(candles_5m) >= 20:
                 indicadores = self._calcular_indicadores(candles_5m)
@@ -147,14 +148,15 @@ class CyberTradeWIN:
                     "Tendencia": contexto.get("tendencia_mercado"),
                 }, "🔮")
 
-            logger.info(f"[CYCLE {num}] Preco: {preco_atual} | Candles: {len(candles_5m)}")
+            logger.info(f"[CYCLE {num}] Preco: {preco_atual} | Candles: {len(candles_5m)} | Dados: {info_dados.get('ultimo_candle', 'N/A')}")
 
             self.redis_state.set("preco_atual_win", str(preco_atual))
             self.redis_state.set("ciclo_atual", str(num))
-            self._salvar_log("SYSTEM", f"Ciclo {num} | Preço: {preco_atual} | Candles: {len(candles_5m)}")
+            self.redis_state.set("info_dados", json.dumps(info_dados))
+            self._salvar_log("SYSTEM", f"Ciclo {num} | Preço: {preco_atual} | Dados: {info_dados.get('ultimo_candle', 'N/A')}")
 
             if PAPER_MODE:
-                self.tg.alertar(f"[{num}] Preco: {preco_atual} | Analisando...")
+                self.tg.alertar(f"[{num}] Preco: {preco_atual} | Dados: {info_dados.get('ultimo_candle', 'N/A')} | Analisando...")
 
             logger.info(f"[CYCLE {num}] Step 2: Running AGENTS (LLM)...")
 
@@ -171,7 +173,7 @@ class CyberTradeWIN:
                 "Motivo": resultado.get("motivo"),
             }, "🎯")
 
-            print_status_sistema(preco_atual, pnl_dia_pct, self.operacoes_hoje, "PAPER" if PAPER_MODE else "REAL")
+            print_status_sistema(preco_atual, pnl_dia_pct, self.operacoes_hoje, "PAPER" if PAPER_MODE else "REAL", info_dados)
 
             salvar_html({
                 "agentes": {
@@ -185,6 +187,7 @@ class CyberTradeWIN:
                     "pnl": pnl_dia_pct,
                     "ops": self.operacoes_hoje,
                     "modo": "PAPER" if PAPER_MODE else "REAL",
+                    "info_dados": info_dados,
                 },
                 "decisao": resultado,
             })

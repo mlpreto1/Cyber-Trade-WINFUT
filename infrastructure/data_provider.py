@@ -214,6 +214,24 @@ class DataProvider:
         self._cache_candles[cache_key] = {"data": data, "timestamp": datetime.now()}
         return data
 
+    def get_info_dados(self) -> dict:
+        info = {
+            "source": self.source,
+            "dia_pregao": _dia_de_pregao(),
+            "horario_aberto": _horario_mercado_aberto(),
+        }
+        cache_key = f"{self.source}:5min:50"
+        cached = self._cache_candles.get(cache_key)
+        if cached and cached.get("data"):
+            dados = cached["data"]
+            if dados:
+                primeiro = dados[0].get("timestamp", "")
+                ultimo = dados[-1].get("timestamp", "")
+                info["primeiro_candle"] = primeiro[:10] if primeiro else ""
+                info["ultimo_candle"] = ultimo[:10] if ultimo else ""
+                info["qtd_candles"] = len(dados)
+        return info
+
     async def get_preco_atual(self) -> float:
         if self.source == "mt5":
             if _dia_de_pregao() and _horario_mercado_aberto():
