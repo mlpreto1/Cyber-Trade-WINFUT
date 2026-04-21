@@ -1,13 +1,21 @@
 # main.py
-# CYBER TRADE WIN v2.1 — Main Loop Completo com LLM
+# CYBER TRADE WIN v2.2 — Main Loop Completo com LLM e Indicadores Reais
 
 import asyncio
 import logging
 import os
 import json
-import random
 from datetime import datetime
-from datetime import timedelta
+
+from utils.indicadores import (
+    calcular_ema,
+    calcular_atr,
+    calcular_rsi,
+    calcular_macd,
+    detectar_regime,
+    detectar_tendencia,
+    calcular_confianca
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,7 +39,7 @@ class CyberTradeWIN:
         self.operacoes_hoje = 0
 
     async def iniciar(self):
-        logger.info("[CYBER] WIN v2.1 started")
+        logger.info("[CYBER] WIN v2.2 started")
         logger.info(f"[MODE] {'PAPER' if PAPER_MODE else 'REAL'}")
         logger.info(f"[DATA] Source: {DATA_SOURCE}")
 
@@ -56,8 +64,11 @@ class CyberTradeWIN:
             self.data_provider = DataProvider(source=DATA_SOURCE)
             self.data_provider.set_redis(self.redis_state)
 
+            from agents.exec_agent import ExecAgent
+            self.exec = ExecAgent(self.redis_state, self.db, self.tg)
+
             logger.info("[OK] Components initialized")
-            self.tg.alertar("[OK] Cyber Trade WIN started!")
+            self.tg.alertar("[OK] Cyber Trade WIN v2.2 started!")
         except Exception as e:
             logger.error(f"[ERR] Init: {e}")
             import traceback
@@ -75,7 +86,7 @@ class CyberTradeWIN:
                 break
 
             await self._ciclo_completo(ciclo)
-            await asyncio.sleep(300)
+            await asyncio.sleep(30)
 
     def _cutoff_atingido(self) -> bool:
         agora = datetime.now().time()
@@ -84,8 +95,8 @@ class CyberTradeWIN:
     async def _ciclo_completo(self, num: int):
         try:
             logger.info(f"[CYCLE {num}] Step 1: Getting data...")
-            
-            candles_5m = await self.data_provider.get_dados_candle("5min", 20)
+
+            candles_5m = await self.data_provider.get_dados_candle("5min", 50)
             preco_atual = await self.data_provider.get_preco_atual()
             book = await self.data_provider.get_book()
             trades = await self.data_provider.get_trades()
@@ -93,6 +104,8 @@ class CyberTradeWIN:
             logger.info(f"[CYCLE {num}] Preco: {preco_atual} | Candles: {len(candles_5m)}")
 
             self.redis_state.set("preco_atual_win", str(preco_atual))
+            self.redis_state.set("ciclo_atual", str(num))
+            self._salvar_log("SYSTEM", f"Ciclo {num} | Preço: {preco_atual} | Candles: {len(candles_5m)}")
 
             if PAPER_MODE:
                 self.tg.alertar(f"[{num}] Preco: {preco_atual} | Analisando...")
@@ -103,14 +116,26 @@ class CyberTradeWIN:
 
             logger.info(f"[CYCLE {num}] Step 3: Decision = {resultado.get('decisao', 'N/A')}")
 
+            self._salvar_log("NEO", resultado.get('decisao', 'N/A'))
+
             if resultado.get("decisao") == "ARMAR":
                 score = resultado.get("score_final", 0)
                 direcao = resultado.get("direcao", "?")
                 entrada = resultado.get("entrada_zona", 0)
                 stop = resultado.get("stop", 0)
-                
-                self.tg.alertar(f"[OK] ARMAR! {direcao} | Score: {score} | Entrada: {entrada} | Stop: {stop}")
-                logger.info(f"[CYCLE {num}] >>> ARMAR {direcao} Score:{score}")
+
+                exec_ok = await self.exec.armar(resultado) if self.exec else False
+
+                if exec_ok and self.exec:
+                    asyncio.create_task(self.exec.executar_gatilho(resultado.get("gatilho", {})))
+                    self.tg.alertar(f"[ARMADO] {direcao} | Score:{score} | Entrada:{entrada} | Stop:{stop}")
+                    self._salvar_log("EXEC", f"Trade armado: {direcao} @ {entrada}")
+                    logger.info(f"[CYCLE {num}] >>> ARMAR {direcao} Score:{score}")
+                else:
+                    self.tg.alertar(f"[REJEITADO] Validação falhou")
+                    self._salvar_log("EXEC", "Falha ao armar trade")
+                    resultado["decisao"] = "CANCELAR"
+                    resultado["motivo"] = "Erro execução"
             else:
                 motivo = resultado.get("motivo", "sem motivo")
                 self.tg.alertar(f"[OK] {resultado.get('decisao', 'CANCELAR')} - {motivo}")
@@ -124,12 +149,16 @@ class CyberTradeWIN:
     async def _executar_agentes(self, candles, book, trades, preco_atual):
         try:
             from agents.cyber_agent import CyberAgent
-            
+
             cyber = CyberAgent(self.router, self.redis_state)
 
             indicadores = self._calcular_indicadores(candles)
             fluxo = self._calcular_fluxo(book, trades)
             contexto = await self._calcular_contexto()
+
+            self._salvar_log("ARCHITECT", f"Sinal: {indicadores.get('sinal')} | Conf: {indicadores.get('confianca')} | ATR: {indicadores.get('atr14_5m'):.0f}")
+            self._salvar_log("MORPHEUS", f"Fluxo: {fluxo.get('direcao_fluxo')} | Forca: {fluxo.get('forca_fluxo')} | CVD: {fluxo.get('cvd_total')}")
+            self._salvar_log("ORACLE", f"Regime: {contexto.get('regime_mercado')} | Macro: {contexto.get('status_macro')} | Tend: {contexto.get('tendencia_mercado')}")
 
             entrada = {
                 "estado_sistema": {
@@ -147,7 +176,7 @@ class CyberTradeWIN:
 
             logger.info("[AGENTS] Calling NEO...")
             resultado = await cyber.decidir(entrada)
-            
+
             logger.info(f"[AGENTS] Result: {resultado.get('decisao', 'N/A')}")
             return resultado
 
@@ -158,52 +187,51 @@ class CyberTradeWIN:
             return {"decisao": "CANCELAR", "motivo": f"Erro agentes: {e}"}
 
     def _calcular_indicadores(self, candles):
-        if not candles or len(candles) < 5:
+        if not candles or len(candles) < 20:
             return {
                 "sinal": "NEUTRO",
                 "confianca": 0,
                 "tendencia_5m": "INDEFINIDA",
                 "tendencia_master_15m": "INDEFINIDA",
                 "atr14_5m": 200,
+                "rsi_14": 50,
+                "ema9_5m": 0,
+                "ema21_5m": 0,
             }
 
-        closes = [c["close"] for c in candles]
-        highs = [c["high"] for c in candles]
-        lows = [c["low"] for c in candles]
+        closes = [float(c["close"]) for c in candles]
+        highs = [float(c["high"]) for c in candles]
+        lows = [float(c["low"]) for c in candles]
 
-        ema9 = sum(closes[-9:]) / 9 if len(closes) >= 9 else closes[-1]
-        ema21 = sum(closes[-21:]) / 21 if len(closes) >= 21 else ema9
-        
-        atr = (max(highs) - min(lows)) / 3
+        ema9 = calcular_ema(closes, 9)
+        ema21 = calcular_ema(closes, 21)
+        atr14 = calcular_atr(candles, 14)
+        rsi = calcular_rsi(candles, 14)
+        macd = calcular_macd(candles)
 
-        if ema9 > ema21:
-            tendencia = "ALTA"
-            sinal = "COMPRA"
-        elif ema9 < ema21:
-            tendencia = "BAIXA"
-            sinal = "VENDA"
-        else:
-            tendencia = "INDEFINIDA"
-            sinal = "NEUTRO"
-
-        confianca = random.randint(60, 80)
+        tendencia, sinal = detectar_tendencia(ema9, ema21)
+        confianca = calcular_confianca(sinal, ema9, ema21, rsi, atr14)
 
         return {
             "sinal": sinal,
             "confianca": confianca,
             "tendencia_5m": tendencia,
             "tendencia_master_15m": tendencia,
-            "atr14_5m": int(atr),
-            "ema9_5m": int(ema9),
-            "ema21_5m": int(ema21),
+            "atr14_5m": round(atr14, 1),
+            "rsi_14": round(rsi, 1),
+            "ema9_5m": round(ema9, 1),
+            "ema21_5m": round(ema21, 1),
+            "macd": macd["macd"],
+            "macd_sinal": macd["sinal"],
+            "macd_hist": macd["histograma"],
         }
 
     def _calcular_fluxo(self, book, trades):
         bids_vol = sum(b["volume"] for b in book.get("bids", []))
         asks_vol = sum(a["volume"] for a in book.get("asks", []))
-        
+
         cvd = bids_vol - asks_vol
-        
+
         if cvd > 50:
             direcao = "COMPRA"
             forca = min(100, 50 + cvd)
@@ -223,32 +251,65 @@ class CyberTradeWIN:
 
     async def _calcular_contexto(self):
         try:
-            import yfinance as yf
-            ibov = yf.Ticker("^BVSP")
-            h = ibov.history(period="1d")
+            candles = await self.data_provider.get_dados_candle("5min", 50)
+
+            if len(candles) >= 20:
+                regime = detectar_regime(candles, 14)
+                closes = [float(c["close"]) for c in candles]
+                ema9 = calcular_ema(closes, 9)
+                ema21 = calcular_ema(closes, 21)
+
+                if ema9 > ema21 * 1.005:
+                    tendencia_mercado = "ALTA"
+                elif ema9 < ema21 * 0.995:
+                    tendencia_mercado = "BAIXA"
+                else:
+                    tendencia_mercado = "INDEFINIDA"
+            else:
+                regime = "INDISPONIVEL"
+                tendencia_mercado = "INDEFINIDA"
+
+            ibov_variacao = await self._get_ibov_variacao()
+
+        except Exception as e:
+            logger.warning(f"[ORACLE] Contexto error: {e}")
+            regime = "INDISPONIVEL"
+            tendencia_mercado = "INDEFINIDA"
             ibov_variacao = 0.0
-            if not h.empty:
-                ibov_variacao = ((h['Close'].iloc[-1] / h['Open'].iloc[0]) - 1) * 100
-        except:
-            ibov_variacao = random.uniform(-1, 1)
 
         hora = datetime.now().hour
-        
-        if hora >= 17:
-            alerta_corte = True
-            regime = "ENCERRANDO"
-        elif random.random() > 0.7:
-            regime = "TRENDING"
-        else:
-            regime = "NORMAL"
 
         return {
             "status_macro": "NORMAL",
             "regime_mercado": regime,
+            "tendencia_mercado": tendencia_mercado,
             "alerta_finalizacao": hora >= 17,
             "score_contexto": 25,
-            "ibov_variacao": ibov_variacao,
+            "ibov_variacao": round(ibov_variacao, 2),
         }
+
+    async def _get_ibov_variacao(self) -> float:
+        try:
+            import yfinance as yf
+            ibov = yf.Ticker("^BVSP")
+            h = ibov.history(period="1d")
+            if not h.empty:
+                return ((h['Close'].iloc[-1] / h['Open'].iloc[0]) - 1) * 100
+        except Exception as e:
+            logger.warning(f"[ORACLE] IBOV error: {e}")
+        return 0.0
+
+    def _salvar_log(self, agente: str, mensagem: str):
+        try:
+            log_entry = {
+                "agente": agente,
+                "mensagem": mensagem,
+                "timestamp": datetime.now().isoformat()
+            }
+            key = f"log:{agente.lower()}:{datetime.now().strftime('%H%M%S')}"
+            self.redis_state.set(key, json.dumps(log_entry))
+        except Exception as e:
+            logger.warning(f"Log error: {e}")
 
 
 if __name__ == "__main__":
