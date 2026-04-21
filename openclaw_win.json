@@ -1,0 +1,66 @@
+{
+  "version": "WIN-2.1",
+  "description": "Cyber Trade WIN v2.1 — WINFUT | Skynet 8 Agentes | Cutoff 17:30",
+  "gateway": "localhost:3000",
+  "contrato": "WINFUT",
+  "valor_ponto": 0.20,
+  "tick_minimo": 5,
+
+  "llm_routing": {
+    "paper_mode_env": "PAPER_MODE",
+    "modelos": {
+      "paper": {
+        "architect": "gemma-4-31b-it",
+        "morpheus": "gemma-4-31b-it",
+        "oracle": "gemma-4-e4b-it",
+        "neo": "gemma-4-31b-it",
+        "cyberdyne": "gemma-4-31b-it"
+      },
+      "producao": {
+        "architect": "gemma-4-31b-it",
+        "morpheus": "gemma-4-31b-it",
+        "oracle": "gemma-4-e4b-it",
+        "neo": "claude-sonnet-4-6",
+        "cyberdyne": "claude-sonnet-4-6"
+      }
+    }
+  },
+
+  "capital_levels": {
+    "niveis": [
+      {"nivel":1,"nome":"INICIANTE","capital_min":1000.0,"capital_max":1999.99,"max_contratos":1,"score_minimo":72,"stop_day_pct":5.0},
+      {"nivel":2,"nome":"CRESCIMENTO_1","capital_min":2000.0,"capital_max":2999.99,"max_contratos":2,"score_minimo":70,"stop_day_pct":4.0},
+      {"nivel":3,"nome":"CRESCIMENTO_2","capital_min":3000.0,"capital_max":4999.99,"max_contratos":3,"score_minimo":68,"stop_day_pct":3.5},
+      {"nivel":4,"nome":"META_INICIAL","capital_min":5000.0,"capital_max":6999.99,"max_contratos":4,"score_minimo":65,"stop_day_pct":2.5},
+      {"nivel":5,"nome":"ESCALA_PLENA","capital_min":7000.0,"capital_max":9999.99,"max_contratos":5,"score_minimo":65,"stop_day_pct":2.5},
+      {"nivel":6,"nome":"MATURIDADE","capital_min":10000.0,"capital_max":999999.0,"max_contratos":5,"score_minimo":65,"stop_day_pct":2.5}
+    ]
+  },
+
+  "risk": {
+    "risco_por_trade_pct": 1.0,
+    "max_operacoes_dia": 5,
+    "rr_minimo": 1.5,
+    "atr_minimo_win": 200.0,
+    "valor_ponto": 0.20,
+    "breakeven_pts": 60.0,
+    "trailing_floor_pts": 80.0
+  },
+
+  "horarios": {
+    "inicio": "09:15",
+    "operacao_fim": "17:30",
+    "proibidos": [
+      {"nome": "Abertura", "inicio": "09:00", "fim": "09:15"},
+      {"nome": "Almoco", "inicio": "12:00", "fim": "13:30"},
+      {"nome": "Fechamento", "inicio": "17:30", "fim": "17:55"}
+    ]
+  },
+
+  "score_pesos": {
+    "graph": 0.35,
+    "flow": 0.30,
+    "context": 0.30,
+    "timing": 0.05
+  }
+}
