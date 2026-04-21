@@ -11,6 +11,7 @@ logger = logging.getLogger("data_provider")
 
 REQUESTS_AVAILABLE = False
 YFINANCE_AVAILABLE = False
+MT5_AVAILABLE = False
 
 try:
     import requests
@@ -24,6 +25,23 @@ try:
 except ImportError:
     pass
 
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    MT5_AVAILABLE = False
+    logger.warning("MetaTrader5 não disponível")
+
+MT5_SYMBOL = "WINJ26"
+MT5_TIMEFRAMES = {
+    "1min": mt5.MODE_TIMEFRAME_M1 if MT5_AVAILABLE else 1,
+    "5min": mt5.MODE_TIMEFRAME_M5 if MT5_AVAILABLE else 5,
+    "15min": mt5.MODE_TIMEFRAME_M15 if MT5_AVAILABLE else 15,
+    "30min": mt5.MODE_TIMEFRAME_M30 if MT5_AVAILABLE else 30,
+    "1h": mt5.MODE_TIMEFRAME_H1 if MT5_AVAILABLE else 16385,
+    "4h": mt5.MODE_TIMEFRAME_H4 if MT5_AVAILABLE else 16388,
+}
+
 
 class DataProvider:
     def __init__(self, source: str = "yahoo"):
@@ -33,12 +51,41 @@ class DataProvider:
         self._ibov_base = 130000.0
         self._preco_win_valido = False
         self._brapi_token = os.getenv("BRAPI_TOKEN", "")
+        self._mt5_inicializado = False
 
     def set_redis(self, redis_state):
         self.redis_state = redis_state
 
+    def _init_mt5(self) -> bool:
+        if not MT5_AVAILABLE:
+            return False
+        if self._mt5_inicializado:
+            return True
+        try:
+            if mt5.initialize():
+                self._mt5_inicializado = True
+                logger.info("[MT5] Inicializado com sucesso")
+                return True
+            else:
+                erro = mt5.last_error()
+                logger.warning(f"[MT5] Erro ao inicializar: {erro}")
+                return False
+        except Exception as e:
+            logger.warning(f"[MT5] Exceção: {e}")
+            return False
+
+    def _shutdown_mt5(self):
+        if self._mt5_inicializado:
+            try:
+                mt5.shutdown()
+                self._mt5_inicializado = False
+            except:
+                pass
+
     async def get_dados_candle(self, timeframe: str = "5min", candles: int = 20) -> List[dict]:
-        if self.source == "brapi":
+        if self.source == "mt5":
+            return await self._buscar_mt5_candles(timeframe, candles)
+        elif self.source == "brapi":
             return await self._buscar_brapi_win(timeframe, candles)
         elif self.source == "profit":
             return await self._buscar_profit_win(timeframe, candles)
@@ -47,7 +94,9 @@ class DataProvider:
         return await self._buscar_yahoo_ibov(candles)
 
     async def get_preco_atual(self) -> float:
-        if self.source == "brapi":
+        if self.source == "mt5":
+            return await self._get_preco_mt5()
+        elif self.source == "brapi":
             return await self._get_preco_brapi()
         elif self.source == "profit":
             return await self._get_preco_win_profit()
@@ -57,7 +106,9 @@ class DataProvider:
         return self._calcular_preco_win_deterministico(self._ibov_base)
 
     async def get_book(self) -> Dict:
-        if self.source == "brapi":
+        if self.source == "mt5":
+            return await self._get_book_mt5()
+        elif self.source == "brapi":
             return await self._get_book_brapi()
         elif self.source == "profit":
             return await self._get_book_profit()
@@ -65,6 +116,72 @@ class DataProvider:
 
     async def get_trades(self) -> List[dict]:
         return self._gerar_trades_simulados(10)
+
+    async def _get_preco_mt5(self) -> float:
+        if not self._init_mt5():
+            return self._calcular_preco_win_deterministico(await self._get_ibov_atual())
+
+        try:
+            tick = mt5.symbol_info_tick(MT5_SYMBOL)
+            if tick:
+                preco = float(tick.last)
+                if preco > 0:
+                    self._preco_win_valido = True
+                    self._ultimo_preco = preco
+                    logger.info(f"[MT5] WIN price: {preco}")
+                    return preco
+        except Exception as e:
+            logger.warning(f"[MT5] Erro ao buscar preço: {e}")
+        finally:
+            pass
+
+        return self._calcular_preco_win_deterministico(await self._get_ibov_atual())
+
+    async def _buscar_mt5_candles(self, timeframe: str, candles: int) -> List[dict]:
+        if not self._init_mt5():
+            return await self._buscar_yahoo_ibov(candles)
+
+        tf = MT5_TIMEFRAMES.get(timeframe, mt5.MODE_TIMEFRAME_M5)
+
+        try:
+            rates = mt5.copy_rates_from_pos(MT5_SYMBOL, tf, 0, candles)
+            if rates is not None and len(rates) > 0:
+                candles_data = []
+                for r in rates:
+                    candles_data.append({
+                        "timestamp": datetime.fromtimestamp(r[0]).isoformat(),
+                        "open": float(r[1]),
+                        "high": float(r[2]),
+                        "low": float(r[3]),
+                        "close": float(r[4]),
+                        "volume": int(r[5]),
+                    })
+                logger.info(f"[MT5] Got {len(candles_data)} candles WIN")
+                return candles_data
+        except Exception as e:
+            logger.warning(f"[MT5] Erro ao buscar candles: {e}")
+
+        return await self._buscar_yahoo_ibov(candles)
+
+    async def _get_book_mt5(self) -> Dict:
+        if not self._init_mt5():
+            return await self._gerar_book_simulado()
+
+        try:
+            book = mt5.market_book_get(MT5_SYMBOL)
+            if book:
+                bids = []
+                asks = []
+                for item in book:
+                    if item.flags & 1:
+                        bids.append({"preco": float(item.price), "volume": int(item.volume)})
+                    else:
+                        asks.append({"preco": float(item.price), "volume": int(item.volume)})
+                return {"bids": bids[:5], "asks": asks[:5]}
+        except Exception as e:
+            logger.warning(f"[MT5] Book error: {e}")
+
+        return await self._gerar_book_simulado()
 
     def _calcular_preco_win_deterministico(self, ibov: float) -> float:
         if self._ultimo_preco > 0:
