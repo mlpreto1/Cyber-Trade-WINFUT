@@ -5,6 +5,61 @@ import asyncio
 import logging
 import os
 from datetime import datetime, timedelta
+from calendar import monthcalendar
+import requests
+
+_feriados_b3_cache = {}
+_ultimo_update = None
+
+def _atualizar_feriados_se_necessario():
+    global _feriados_b3_cache, _ultimo_update
+    agora = datetime.now()
+    ano = agora.year
+    
+    if _ultimo_update and _ultimo_update.year == ano and _feriados_b3_cache.get("ano") == ano:
+        return
+    
+    if agora.month == 12 and agora.day >= 10:
+        try:
+            url = f"https://b3.com.br/pt_br/mercados/calendario"
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                _feriados_b3_cache = {"ano": ano, "atualizado": True}
+                logger.info(f"[B3] Feriados {ano} atualizados")
+                _ultimo_update = agora
+                return
+        except:
+            pass
+    
+    _feriados_b3_cache = {"ano": ano, "padrao": True}
+    _ultimo_update = agora
+
+def _dia_de_pregao() -> bool:
+    _atualizar_feriados_se_necessario()
+    
+    agora = datetime.now()
+    if agora.weekday() >= 5:
+        return False
+
+    FERIADOS_B3_2026 = [
+        (1, 1),    # Confraternização Universal
+        (2, 16),   # Carnaval
+        (2, 17),   # Carnaval
+        (4, 3),    # Sexta-feira Santa
+        (4, 21),   # Tiradentes
+        (5, 1),    # Dia do Trabalho
+        (6, 4),    # Corpus Christi
+        (9, 7),    # Independência do Brasil
+        (10, 12),  # Nossa Senhora de Aparecida
+        (11, 2),   # Finados
+        (11, 20),  # Consciência Negra
+        (12, 24),  # Véspera de Natal
+        (12, 25),  # Natal
+    ]
+
+    if (agora.month, agora.day) in FERIADOS_B3_2026:
+        return False
+    return True
 from typing import Dict, List, Optional
 
 logger = logging.getLogger("data_provider")
@@ -42,6 +97,46 @@ MT5_TIMEFRAMES = {
     "1h": mt5.TIMEFRAME_H1 if MT5_AVAILABLE else 16385,
     "4h": mt5.TIMEFRAME_H4 if MT5_AVAILABLE else 16388,
 }
+
+def _dia_de_pregao() -> bool:
+    agora = datetime.now()
+    if agora.weekday() >= 5:
+        return False
+
+    FERIADOS_B3_2026 = [
+        (1, 1),    # Confraternização Universal
+        (2, 16),   # Carnaval
+        (2, 17),   # Carnaval
+        (4, 3),    # Sexta-feira Santa
+        (4, 21),   # Tiradentes
+        (5, 1),    # Dia do Trabalho
+        (6, 4),    # Corpus Christi
+        (9, 7),    # Independência do Brasil
+        (10, 12),  # Nossa Senhora de Aparecida
+        (11, 2),   # Finados
+        (11, 20),  # Consciência Negra
+        (12, 24),  # Véspera de Natal
+        (12, 25),  # Natal
+    ]
+
+    if (agora.month, agora.day) in FERIADOS_B3_2026:
+        return False
+    return True
+
+def _ultimo_dia_util_4_semanas_atras() -> datetime:
+    agora = datetime.now()
+    semana_passada = agora - timedelta(weeks=4)
+    
+    for i in range(30):
+        dia = semana_passada - timedelta(days=i)
+        if dia.weekday() < 5:
+            return dia
+    return semana_passada
+
+def _horario_mercado_aberto() -> bool:
+    agora = datetime.now()
+    hora_min = agora.hour * 60 + agora.minute
+    return 555 <= hora_min <= 1050
 
 
 class DataProvider:
@@ -101,7 +196,11 @@ class DataProvider:
                 return cached["data"]
 
         if self.source == "mt5":
-            data = await self._buscar_mt5_candles(timeframe, candles)
+            if _dia_de_pregao() and _horario_mercado_aberto():
+                data = await self._buscar_mt5_candles_tempo_real(timeframe, candles)
+            else:
+                logger.warning("[MT5] Mercado fechado, buscandoUltimos dias uteis")
+                data = await self._buscar_mt5_candles_historico(timeframe, candles)
         elif self.source == "brapi":
             data = await self._buscar_brapi_win(timeframe, candles)
         elif self.source == "profit":
@@ -116,7 +215,11 @@ class DataProvider:
 
     async def get_preco_atual(self) -> float:
         if self.source == "mt5":
-            return await self._get_preco_mt5()
+            if _dia_de_pregao() and _horario_mercado_aberto():
+                return await self._get_preco_mt5()
+            else:
+                logger.warning("[MT5] Mercado fechado, preco historico")
+                return await self._get_preco_mt5_historico()
         elif self.source == "brapi":
             return await self._get_preco_brapi()
         elif self.source == "profit":
@@ -157,15 +260,34 @@ class DataProvider:
                 continue
 
         logger.warning("[MT5] Nenhum preco WIN encontrado")
-        return self._calcular_preco_win_deterministico(await self._get_ibov_atual())
+        return await self._get_preco_mt5_historico()
 
-    async def _buscar_mt5_candles(self, timeframe: str, candles: int) -> List[dict]:
+    async def _get_preco_mt5_historico(self) -> float:
         if not self._init_mt5():
-            return await self._buscar_yahoo_ibov(candles)
+            return self._ultimo_preco if self._ultimo_preco > 0 else 130000.0
+
+        for sym in MT5_SYMBOLS:
+            try:
+                mt5.symbol_select(sym, True)
+                rates = mt5.copy_rates_from_pos(sym, mt5.TIMEFRAME_M5, 0, 1)
+                if rates is not None and len(rates) > 0:
+                    preco = float(rates[0][4])
+                    self._preco_win_valido = True
+                    self._ultimo_preco = preco
+                    logger.info(f"[MT5] Ultimo preco {sym}: {preco}")
+                    return preco
+            except Exception as e:
+                logger.warning(f"[MT5] historico error {sym}: {e}")
+                continue
+
+        return self._ultimo_preco if self._ultimo_preco > 0 else 130000.0
+
+    async def _buscar_mt5_candles_tempo_real(self, timeframe: str, candles: int) -> List[dict]:
+        if not self._init_mt5():
+            return []
 
         tf = MT5_TIMEFRAMES.get(timeframe, mt5.TIMEFRAME_M5)
 
-        # Try each symbol
         for sym in MT5_SYMBOLS:
             try:
                 mt5.symbol_select(sym, True)
@@ -181,13 +303,44 @@ class DataProvider:
                             "close": float(r[4]),
                             "volume": int(r[5]),
                         })
-                    logger.info(f"[MT5] Got {len(candles_data)} candles from {sym}")
+                    logger.info(f"[MT5] Tempo real {sym}: {len(candles_data)} candles")
                     return candles_data
             except Exception as e:
-                logger.warning(f"[MT5] candles error {sym}: {e}")
+                logger.warning(f"[MT5] tempo real error {sym}: {e}")
                 continue
 
-        return await self._buscar_yahoo_ibov(candles)
+        return []
+
+    async def _buscar_mt5_candles_historico(self, timeframe: str, candles: int) -> List[dict]:
+        if not self._init_mt5():
+            return []
+
+        tf = MT5_TIMEFRAMES.get(timeframe, mt5.TIMEFRAME_M5)
+        start_time = _ultimo_dia_util_4_semanas_atras()
+
+        for sym in MT5_SYMBOLS:
+            try:
+                mt5.symbol_select(sym, True)
+                now = datetime.now()
+                rates = mt5.copy_rates_range(sym, tf, start_time, now)
+                if rates is not None and len(rates) > 0:
+                    candles_data = []
+                    for r in rates:
+                        candles_data.append({
+                            "timestamp": datetime.fromtimestamp(r[0]).isoformat(),
+                            "open": float(r[1]),
+                            "high": float(r[2]),
+                            "low": float(r[3]),
+                            "close": float(r[4]),
+                            "volume": int(r[5]),
+                        })
+                    logger.info(f"[MT5] Historico desde {start_time.date()}: {len(candles_data)} candles")
+                    return candles_data[-candles:]
+            except Exception as e:
+                logger.warning(f"[MT5] historico error {sym}: {e}")
+                continue
+
+        return []
 
     async def _get_book_mt5(self) -> Dict:
         if not self._init_mt5():

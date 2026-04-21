@@ -1,7 +1,7 @@
 # CYBER TRADE WIN — MASTER PROJECT STATUS
 **Data:** 21/04/2026
-**Versão:** v2.4
-**Status:** ✅ MELHORIAS IMPLEMENTADAS — PnL, Circuit Breaker, Cache, Score Dinâmico
+**Versão:** v2.6
+**Status:** ✅ Mercado Fechado — Dados Históricos 28 dias úteis, Feriados B3
 
 ---
 
@@ -18,13 +18,14 @@
 
 ---
 
-## 2. NOVAS IMPLEMENTAÇÕES v2.4
+## 2. NOVAS IMPLEMENTAÇÕES v2.6
 
 ```
-✅ PnL real calculado do banco de dados
-✅ Circuit breaker - para após 3 erros consecutivos
-✅ Cache de candles - evita fetching repetido (30s)
-✅ Score dinâmico - pesos configuráveis (ATR, CVD, conf, fluxo)
+✅ Mercado fechado → dados históricos desde último dia útil (4 semanas)
+✅ Verificação dia de pregão com feriados oficiais B3 2026
+✅ Auto-update feriados B3 a partir de 10/12
+✅ Sem fallback Yahoo/BRAPI - sempre MT5
+✅ Mercado aberto → tempo real
 ```
 
 ---
