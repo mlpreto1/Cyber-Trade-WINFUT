@@ -6,7 +6,7 @@ import logging
 import os
 import json
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 logger = logging.getLogger("data_provider")
@@ -56,7 +56,7 @@ class DataProvider:
         preco = self._ultimo_preco
         agora = datetime.now()
 
-        for i in range(n, 0, -1):
+        for i in range(n):
             variacao = random.uniform(-150, 150)
             open_price = preco
             close_price = preco + variacao
@@ -64,8 +64,11 @@ class DataProvider:
             low_price = min(open_price, close_price) - random.uniform(0, 80)
             volume = random.randint(100, 500)
 
+            base = datetime.now().replace(hour=9, minute=15, second=0, microsecond=0)
+            ts = base + timedelta(minutes=i * 5)
+
             candles.append({
-                "timestamp": (agora.replace(minute=agora.minute - i*5)).isoformat(),
+                "timestamp": ts.isoformat(),
                 "open": round(open_price, 0),
                 "high": round(high_price, 0),
                 "low": round(low_price, 0),
