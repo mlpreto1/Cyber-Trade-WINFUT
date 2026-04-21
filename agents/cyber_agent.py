@@ -1,9 +1,10 @@
 # agents/cyber_agent.py
-# CYBER TRADE WIN v2.1
+# CYBER TRADE WIN v2.1 — NEO Agent com LLM
 
 import json
 import logging
 import os
+import random
 from datetime import datetime, timezone
 from agents.base_agent import BaseAgent
 
@@ -42,14 +43,138 @@ class CyberAgent(BaseAgent):
         if bloqueio:
             return self._decisao_cancelar(bloqueio, cyber_input, sniper_mode)
 
-        user_content = json.dumps(cyber_input, ensure_ascii=False, indent=2)
-        try:
-            resultado = await self.invocar(user_content)
-        except Exception as e:
-            logger.error(f"CYBER WIN LLM falhou: {e}")
-            return self._decisao_cancelar(f"Erro LLM: {e}", cyber_input, sniper_mode)
+        graph = cyber_input.get("graph", {})
+        flow = cyber_input.get("flow", {})
+        context = cyber_input.get("context", {})
 
-        return self._pos_validar(resultado, cyber_input, sniper_mode, score_min, max_c, stop_max)
+        if self.router:
+            try:
+                resultado = await self._chamar_llm(graph, flow, context, cyber_input.get("estado_sistema", {}))
+                if resultado:
+                    return self._pos_validar(resultado, cyber_input, sniper_mode, score_min, max_c, stop_max)
+            except Exception as e:
+                logger.error(f"[NEO] LLM error: {e}")
+
+        return self._decisao_simulado(graph, flow, context, sniper_mode, score_min)
+
+    async def _chamar_llm(self, graph, flow, context, estado):
+        try:
+            prompt = self._montar_prompt(graph, flow, context, estado)
+            
+            resposta = await self.router.gerar(
+                agent="neo",
+                user_content=prompt,
+                max_tokens=1000,
+                temperature=0.1,
+            )
+
+            logger.info(f"[NEO] LLM response: {resposta[:200]}...")
+            
+            return self._parse_json_resultado(resposta)
+        except Exception as e:
+            logger.error(f"[NEO] LLM call failed: {e}")
+            return None
+
+    def _montar_prompt(self, graph, flow, context, estado):
+        return f"""
+Você é o NEO, orquestrador do Cyber Trade WIN.
+Analise os dados e retorne uma decisão.
+
+## Estado do Sistema
+- Capital: R$ {estado.get('capital_atual', 1000)}
+- Operações hoje: {estado.get('operacoes_hoje', 0)}
+- Nível: {estado.get('nivel_atual', 1)}
+- Modo: {estado.get('modo', 'PAPER')}
+
+## ARCHITECT (Gráfico)
+- Sinal: {graph.get('sinal', 'NEUTRO')}
+- Confiança: {graph.get('confianca', 0)}
+- Tendência 15m: {graph.get('tendencia_master_15m', 'INDEFINIDA')}
+- ATR: {graph.get('atr14_5m', 200)}
+
+## MORPHEUS (Fluxo)
+- Direção: {flow.get('direcao_fluxo', 'NEUTRO')}
+- Força: {flow.get('forca_fluxo', 0)}
+- CVD: {flow.get('cvd_total', 0)}
+
+## ORACLE (Contexto)
+- Regime: {context.get('regime_mercado', 'NORMAL')}
+- Status: {context.get('status_macro', 'NORMAL')}
+- Alerta corte: {context.get('alerta_finalizacao', False)}
+
+## Regras
+- Score >= 65 = ARMAR (PADRÃO)
+- Score >= 85 = ARMAR (PREMIUM)
+- Score < 65 = CANCELAR
+- Dúvida = CANCELAR
+
+Retorne JSON:
+{{
+  "decisao": "ARMAR|CANCELAR",
+  "score_final": 0-100,
+  "direcao": "COMPRA|VENDA|NEUTRO",
+  "entrada_zona": 0,
+  "stop": 0,
+  "alvo1": 0,
+  "alvo2": 0,
+  "gatilho": {{"tipo": "ROMPIMENTO", "validade_segundos": 300}},
+  "motivo": "explicação curta"
+}}
+"""
+
+    def _parse_json_resultado(self, texto: str) -> dict:
+        try:
+            inicio = texto.find("{")
+            fim = texto.rfind("}") + 1
+            if inicio >= 0 and fim > inicio:
+                return json.loads(texto[inicio:fim])
+        except Exception as e:
+            logger.error(f"[NEO] Parse error: {e}")
+        return {}
+
+    def _decisao_simulado(self, graph, flow, context, sniper_mode, score_min):
+        graph_sinal = graph.get("sinal", "NEUTRO")
+        graph_conf = graph.get("confianca", 0)
+        flow_forca = flow.get("forca_fluxo", 0)
+        regime = context.get("regime_mercado", "NORMAL")
+        
+        if regime == "MORTO":
+            return self._decisao_cancelar("Regime MORTO", {}, sniper_mode)
+        
+        if graph_sinal == "NEUTRO" or graph_conf < 60:
+            return self._decisao_cancelar("Sinal fraco", {}, sniper_mode)
+        
+        if flow_forca < 40:
+            return self._decisao_cancelar("Fluxo fraco", {}, sniper_mode)
+
+        score = min(100, graph_conf + flow_forca // 2)
+        
+        if score >= score_min:
+            direcao = graph_sinal
+            preco = graph.get("ema9_5m", 130000)
+            
+            if direcao == "COMPRA":
+                stop = preco - 50
+                alvo1 = preco + 100
+                alvo2 = preco + 150
+            else:
+                stop = preco + 50
+                alvo1 = preco - 100
+                alvo2 = preco - 150
+
+            return {
+                "decisao": "ARMAR",
+                "score_final": score,
+                "direcao": direcao,
+                "entrada_zona": preco,
+                "stop": stop,
+                "alvo1": alvo1,
+                "alvo2": alvo2,
+                "gatilho": {"tipo": "ROMPIMENTO", "validade_segundos": 300},
+                "motivo": f"Simulado score={score}"
+            }
+
+        return self._decisao_cancelar(f"Score {score} < {score_min}", {}, sniper_mode)
 
     def _ler_sniper_mode(self, estado: dict) -> bool:
         if self.redis:
@@ -82,6 +207,8 @@ class CyberAgent(BaseAgent):
             return f"Máx {MAX_OPERACOES_DIA} ops"
         if context.get("status_macro") == "BLOQUEADO":
             return "ORACLE: macro BLOQUEADO"
+        if context.get("alerta_finalizacao", False):
+            return "Corte 17:30 próximo"
         if graph.get("sinal") == "NEUTRO" or graph.get("confianca", 0) == 0:
             return "ARCHITECT: NEUTRO"
         if graph.get("confianca", 0) < 60:
