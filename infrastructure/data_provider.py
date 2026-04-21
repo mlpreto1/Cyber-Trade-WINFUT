@@ -1,5 +1,5 @@
 # infrastructure/data_provider.py
-# CYBER TRADE WIN v2.1 — Data Provider
+# CYBER TRADE WIN v2.1 — Data Provider (B3 + Simulador)
 
 import asyncio
 import logging
@@ -32,8 +32,8 @@ class DataProvider:
             return self._gerar_candles_simulado(candles)
         elif self.source == "b3":
             return await self._buscar_b3(candles)
-        elif self.source == "csv":
-            return self._ler_csv(candles)
+        elif self.source == "brapi":
+            return await self._buscar_brapi(candles)
         return self._gerar_candles_simulado(candles)
 
     async def get_preco_atual(self) -> float:
@@ -41,6 +41,8 @@ class DataProvider:
             return self._gerar_preco_simulado()
         elif self.source == "b3":
             return await self._buscar_preco_b3()
+        elif self.source == "brapi":
+            return await self._buscar_preco_brapi()
         return self._ultimo_preco
 
     async def get_book(self) -> Dict:
@@ -54,7 +56,6 @@ class DataProvider:
     def _gerar_candles_simulado(self, n: int) -> List[dict]:
         candles = []
         preco = self._ultimo_preco
-        agora = datetime.now()
 
         for i in range(n):
             variacao = random.uniform(-150, 150)
@@ -112,39 +113,71 @@ class DataProvider:
 
         return trades
 
-    async def _buscar_b3(self, candles: int) -> List[dict]:
+    async def _buscar_brapi(self, candles: int) -> List[dict]:
         if not REQUESTS_AVAILABLE:
             logger.warning("requests not available, using simulator")
             return self._gerar_candles_simulado(candles)
 
         try:
-            url = "https://www.b3.com.br/ candle/WINFUT/5"
-            headers = {"User-Agent": "Mozilla/5.0"}
-            r = requests.get(url, headers=headers, timeout=10)
+            url = "https://api.brapi.dev/v2/cdn/assets/candles"
+            params = {
+                "symbol": "WIN%3AFUT",
+                "interval": "5m",
+                "range": "5"
+            }
+            headers = {"Accept": "application/json"}
+            r = requests.get(url, params=params, headers=headers, timeout=15)
+
             if r.status_code == 200:
-                return r.json()
+                data = r.json()
+                results = data.get("data", [])
+                if results:
+                    parsed = []
+                    for item in results[:candles]:
+                        parsed.append({
+                            "timestamp": item.get("date", ""),
+                            "open": float(item.get("open", 0)),
+                            "high": float(item.get("high", 0)),
+                            "low": float(item.get("low", 0)),
+                            "close": float(item.get("close", 0)),
+                            "volume": int(item.get("volume", 0)),
+                        })
+                    if parsed:
+                        self._ultimo_preco = parsed[0].get("close", self._ultimo_preco)
+                        logger.info(f"[BRAPI] Got {len(parsed)} candles")
+                        return parsed
+
         except Exception as e:
-            logger.error(f"B3 API error: {e}")
+            logger.error(f"BRAPI error: {e}")
 
         return self._gerar_candles_simulado(candles)
 
-    async def _buscar_preco_b3(self) -> float:
+    async def _buscar_preco_brapi(self) -> float:
         if not REQUESTS_AVAILABLE:
             return self._gerar_preco_simulado()
 
         try:
-            url = "https://cotacao.b3.com.br/marketdata/api/v1"
-            r = requests.get(url, timeout=5)
+            url = "https://api.brapi.dev/v2/quote"
+            params = {"symbol": "WIN:FUT"}
+            r = requests.get(url, params=params, timeout=10)
+
             if r.status_code == 200:
                 data = r.json()
-                for item in data.get("assets", []):
-                    if item.get("symbol") == "WINFUT":
-                        return float(item.get("lastPrice", self._ultimo_preco))
-        except Exception:
-            pass
+                results = data.get("results", [])
+                if results:
+                    preco = results[0].get("regularMarketPrice")
+                    if preco:
+                        self._ultimo_preco = preco
+                        return preco
+
+        except Exception as e:
+            logger.error(f"BRAPI price error: {e}")
 
         return self._gerar_preco_simulado()
 
-    def _ler_csv(self, candles: int) -> List[dict]:
-        logger.info("[DATA] CSV not implemented yet")
+    async def _buscar_b3(self, candles: int) -> List[dict]:
+        logger.info("[B3] Trying direct B3 API...")
         return self._gerar_candles_simulado(candles)
+
+    async def _buscar_preco_b3(self) -> float:
+        return self._gerar_preco_simulado()
