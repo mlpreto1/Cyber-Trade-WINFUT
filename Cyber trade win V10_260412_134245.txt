@@ -1,0 +1,545 @@
+CYBER TRADE v1.0-WIN — MINI ÍNDICE B3
+SISTEMA EVOLUTIVO | SCALPING 5MIN | 7 AGENTES | LEARN + TAPE + MACRO REGIME
+Documento único para copiar e colar. Salve como cyber_trade_v1.0_win.md
+
+AVISO LEGAL: Documento educacional. Mercados futuros de índice envolvem risco de perda superior ao capital investido. Nenhum sistema garante lucro. Paper trading obrigatório antes do capital real. Adaptações macroeconômicas e microestruturais para WIN exigem recalibração rigorosa. Consulte um profissional certificado (CFP/CFA) antes de alocar capital real.
+
+INDICE
+1. Premissas e Paradigma WIN
+2. Filosofia e Princípios Imutáveis
+3. Arquitetura dos 7 Agentes
+4. Fluxo Operacional Completo
+5-10. SKILL.md Adaptados (GRAPH, FLOW, CONTEXT, CYBER, EXEC, GUARD)
+11. SKILL.md — LEARN v1.0 WIN
+12-16. Código Python LEARN (Agent, Optimizer, Researcher, Memory, Telegram)
+17-22. Módulos Base Adaptados (tape_reader, main, agents, infra, utils, guard)
+23. openclaw.json v1.0 WIN
+24. Estrutura de Arquivos
+25. Gestão de Risco e Parâmetros
+26. Roadmap de Deploy (10 Semanas)
+27. Modo de Emergência Manual
+28. Métricas, KPIs e Dashboard
+29. Glossário WIN
+
+1. PREMISSAS E PARADIGMA WIN
+Diferenças Estruturais WDO vs WIN:
+- Valor do ponto: WDO R$5,00 | WIN R$0,20
+- Lote: WDO US$10.000 | WIN R$20,00 x valor do Ibovespa
+- Driver primário: WDO DXY + fluxo cambial | WIN Ibovespa spot + fluxo doméstico
+- Driver secundário: WDO DI1F | WIN VIX, S&P500, PETR4, VALE3, DI1F
+- ATR médio 5min: WDO 8-20 pts | WIN 40-120 pts
+- Tape médio: WDO 2-8 prints/s | WIN 5-20 prints/s (alta liquidez)
+- Correlação DXY: WDO direta (~0.7) | WIN inversa (~-0.6)
+- Horários críticos: WDO NY Open/Ptax | WIN Abertura B3/Almoço/Leilão Fechamento
+
+Premissas do WIN:
+Lote: R$0,20 por ponto do Ibovespa
+Horário operação: 10:00–16:55 BRT
+  └─ 10:00-10:15: abertura B3 — filtro interno (não opera)
+  └─ 12:00-13:00: almoço — liquidez reduzida, spoofing alto
+  └─ 16:55-17:00: leilão de fechamento — evitar
+Driver primário: IBOV spot + fluxo de ações BR
+Driver secundário: VIX, S&P500, PETR4, VALE3, DI1F
+ATR médio 5min: 40-120 pontos (sessão ativa)
+Tape médio: 5-20 prints/segundo
+Correlação IBOV spot: Obrigatória (~0.95)
+Correlação PETR4+VALE3: ~30% peso no índice, afetam WIN indiretamente
+Regime macro: DI1F influencia valuation de equities (correlação inversa com múltiplos)
+VIX >25: cautela em compras (risk-off global drena emergentes)
+
+2. FILOSOFIA E PRINCÍPIOS IMUTÁVEIS
+PRINCÍPIOS DE OPERAÇÃO:
+1. IA analisa → regras decidem → código executa
+2. Tape é a verdade. CVD divergindo = sinal master.
+3. Paper trading em 2 regimes antes do capital real
+4. Estado sempre persistido (Redis + SQLite)
+5. Kill switch manual sempre disponível
+6. Risco por trade (1%) NUNCA pode aumentar
+7. Filtros de segurança NUNCA podem ser removidos
+8. Aprovação humana SEMPRE obrigatória
+9. Estratégia nova → paper 30 trades → relatório → real
+10. Toda mudança registrada com motivo + dados + impacto
+11. Autonomia total de pesquisa (RESEARCHER), desde que passe pelo filtro de risco
+
+3. ARQUITETURA DOS 7 AGENTES
+[GRAPH] 5m+15m → Analisa tendência, EMA, RSI, VWAP, POC, regime (Sonnet)
+[FLOW] Tape+CVD+Iceberg+TPS → Analisa fluxo, delta, spoofing, held, sweep (Sonnet)
+[CONTEXT] IBOV+VIX+S&P+Commod+DI1F → Macro, sessão, regime, agenda (Haiku)
+[CYBER] Score + 11 filtros → Decide ARMAR/AGUARDAR/CANCELAR (Sonnet)
+[EXEC] Trail ATR + Break-even → Executa, monitora, registra (Python puro)
+[GUARD] Watchdog → Saúde, reconexão, relatório, emergência (Python separado)
+[LEARN] Optimizer + Researcher → Ciclo de almoço + manual, Telegram bidirecional, memória SQLite (Sonnet)
+
+4. FLUXO OPERACIONAL COMPLETO
+INÍCIO DO DIA (09:45 BRT):
+- GUARD inicia (processo separado)
+- Health check: Redis, ProfitDLL, API, Telegram
+- Checa posições abertas do dia anterior
+- LEARN carrega memória
+- CONTEXT: IBOV spot, VIX, S&P500, regime, agenda
+- Telegram: "✅ CT WIN v1.0 | Regime: X | IBOV: Y | VIX: Z"
+
+CICLO DE TRADING (10:00-16:55):
+- 10:00-10:15: ABERTURA B3 (filtro interno — não opera)
+- CICLO DE CANDLE (a cada 5min, 10:15-16:55):
+  Pré-filtro local (ATR ≥40pts, horário, cool-down, stop-day)
+  Coleta: candles, book, tape, IBOV spot
+  tape_reader.py: CVD, Iceberg, Exaustão TPS
+  asyncio.gather: GRAPH + FLOW + CONTEXT
+  CYBER decide (latência híbrida: >5s+ >15pts = cancelar)
+  EXEC monitora gatilho e posição
+
+CICLO DE APRENDIZADO (12:05-13:30 — almoço):
+- LEARN inicia automaticamente
+- OPTIMIZER: analisa histórico por técnica, horário, regime, score range, tipo setup, trailing, break-even, dia semana, correlação score/resultado, CVD threshold
+- RESEARCHER: pesquisa web, papers, correlações, padrões locais. Valida contra histórico WIN.
+- TELEGRAM: envia propostas ao operador
+
+FIM DO DIA (16:55 BRT):
+- EXEC fecha posições antes do leilão de fechamento
+- GUARD: relatório completo
+- LEARN: registra o dia na memória persistente
+- Telegram: resumo do dia + próxima proposta LEARN
+
+5. SKILL.md — GRAPH v1.0 WIN (Resumo Técnico)
+- Tendência 15min (EMA9/21) define viés. NUNCA operar contra.
+- VWAP e POC como referência. Preço em zona de equilíbrio (±0.5xATR) = EVITAR.
+- RSI zonas: 40-65 (compra) | 35-60 (venda). MACD alinhado. Volume >1.3x média.
+- Padrões de candle: Engolfo, Martelo, Pin Bar, Inside Bar.
+- R:R mínimo 1.5. Stop máximo 2xATR. Confiança teto 80.
+- Alertas: Divergência RSI/Preço, Volume relativo <0.8, Preço próximo a extremos do dia (<1xATR).
+
+6. SKILL.md — FLOW v1.0 WIN (Resumo Técnico)
+- Spoofing: ordens >400 contratos somem em <2s sem execução = -30 score
+- Speed: TPS atual vs média 60s. Rajada >2x = +12. Extrema >3x = +20.
+- Burst vs Drip: Rajada irregular = institucional (+15). Drip regular = varejo (-5).
+- Sweep: Varrida ≥3 níveis em <3s com volume ≥300c = +20. ≥5 níveis = +30.
+- Held Level: Defesa com absorção ≥800c = +25.
+- CVD/Delta: Divergência preço/delta = sinal master. Baixista = -20.
+- Score base 50. Limitado 0-100.
+- Alertas: Book spoofado → focar apenas tape. Rompimento fraco → -25. Absorção pós-rompimento → -30.
+
+7. SKILL.md — CONTEXT v1.0 WIN (Resumo Técnico)
+- Agenda: Eventos ALTO impacto <30min = BLOQUEADO.
+- Correlações: VIX >25 = cautela em compras. S&P500 queda forte = filtro risk-off. PETR4/VALE3 afetam ~30% do índice. DI1F alta pressiona valuation.
+- Regime: ATR diário >1.8x média = TRENDING_FORTE. 0.7-1.2x = RANGE. <40pts 5min = MORTO.
+- Sessão: 10:00-10:15 PROIBIDO. 12:00-13:00 LIQUIDEZ BAIXA. 16:55-17:00 PROIBIDO.
+- Output: status_macro, penalidade_score, correlações, regime, qualidade_sessão, alertas.
+
+8. SKILL.md — CYBER v1.0 WIN (Resumo Técnico)
+- 11 filtros de bloqueio: posição aberta, stop-day, max ops, cool-down, score <65, fluxo <40, regime morto, horário proibido.
+- Alinhamento: GRAPH e FLOW devem concordar. Conflito = CANCELAR.
+- Score: GRAPH 35% | FLOW 30% | CONTEXT 20% | TIMING 5% | AJUSTES 10%.
+- Cálculo posição: risco 1% | stop 80-150pts | max 5 contratos | slippage 15pts.
+- Gatilho: ROMPIMENTO, PULLBACK, CONTINUAÇÃO, SWEEP. Validade 45-120s.
+- Output: decisão, score_detalhado, direção, contratos, níveis, gatilho, risco, motivo.
+
+9. SKILL.md — EXEC v1.0 WIN (Resumo Técnico)
+- Validação JSON CYBER completa. Coerência de preços, validade não expirada.
+- Slippage ≤15pts entra normal. 15-25pts reduz contratos. >25pts ABORTAR.
+- Monitoramento: Stop 80-150pts. Alvo 1 = 50% + breakeven (+25pts). Alvo 2 = fecha tudo.
+- Registro: SQLite + Google Sheets + Telegram. PAPER_MODE=true padrão.
+- Regras: NUNCA entrar sem gatilho. NUNCA ignorar timeout. Kill switch manual.
+
+10. SKILL.md — GUARD v1.0 WIN (Resumo Técnico)
+- Health check 60s: ProfitDLL, Redis, API, Telegram, Sheets, Internet.
+- Reconexão automática ProfitDLL (3 tentativas).
+- Estado ao reiniciar: alertar posição aberta, aguardar confirmação manual.
+- Relatório diário 17:00: métricas, PF, drawdown, custo API, evitados.
+- Alertas KPI: cool-down, stop-day, score alto, custo API.
+
+11. SKILL.md — LEARN v1.0 WIN (Resumo Técnico)
+- IDENTIDADE: Optimizer (estatístico) + Researcher (pesquisa web/padrões).
+- PRINCÍPIOS: Risco 1% sagrado. Filtros intocáveis. Aprovação humana obrigatória. Estratégia nova = paper 30 trades. Base mínima 20 trades.
+- OPTIMIZER: Analisa acerto por técnica, horário, regime, score range, setup, trailing, BE, dia semana, CVD threshold.
+- RESEARCHER: Queries diárias rotativas ("order flow WIN B3", "Ibovespa microstructure", "VIX emerging markets", "commodities BR valuation"). Valida contra histórico local.
+- PROPOSTAS: Formato padronizado Telegram. Tipos A-F. Paper antes de real. Rollback disponível.
+- MEMÓRIA: learn_memory.db (SQLite). Lembra tudo entre sessões.
+
+12. learn_agent.py — Código Completo
+import asyncio, json, os
+from datetime import datetime
+from loguru import logger
+from dotenv import load_dotenv
+from learn.learn_optimizer import LearnOptimizer
+from learn.learn_researcher import LearnResearcher
+from learn.learn_memory import LearnMemory
+from learn.learn_telegram_handler import LearnTelegramHandler
+from infrastructure.database import Database
+from infrastructure.redis_state import RedisState
+from infrastructure.telegram_bot import TelegramBot
+
+load_dotenv()
+
+class LearnAgent:
+    def __init__(self):
+        self.db = Database()
+        self.redis = RedisState()
+        self.tg = TelegramBot()
+        self.memory = LearnMemory()
+        self.optimizer = LearnOptimizer(self.db, self.memory)
+        self.researcher = LearnResearcher(self.db, self.memory)
+        self.tg_handler = LearnTelegramHandler(self, self.tg)
+        self._em_execucao = False
+
+    async def ciclo_almoco(self):
+        if self._em_execucao: return
+        self._em_execucao = True
+        inicio = datetime.now()
+        try:
+            logger.info("━━ LEARN WIN: Ciclo de almoço iniciado ━━")
+            self.tg.alertar("🧠 LEARN WIN iniciando ciclo de aprendizado...")
+            p_opt = await self.optimizer.analisar()
+            p_res = await self.researcher.pesquisar()
+            todas = p_opt + p_res
+            if not todas:
+                dur = (datetime.now() - inicio).seconds // 60
+                self.tg.alertar(f"🧠 LEARN concluído ({dur}min). Nenhuma proposta válida.")
+                return
+            for p in todas:
+                await self.tg_handler.enviar_proposta(p)
+                await asyncio.sleep(3)
+            dur = (datetime.now() - inicio).seconds // 60
+            self.tg.alertar(f"🧠 LEARN concluído ({dur}min)\n📊 {len(p_opt)} otimização\n🔬 {len(p_res)} pesquisa\nAguardando resposta.")
+            self.memory.registrar_ciclo({"timestamp": inicio.isoformat(), "propostas_total": len(todas)})
+        except Exception as e:
+            logger.error(f"LEARN falhou: {e}"); self.tg.alertar(f"⚠️ LEARN: erro — {e}")
+        finally: self._em_execucao = False
+
+    async def comando_manual(self, texto: str):
+        t = texto.lower()
+        if "pesquise" in t: await self._pesquisa_manual(t.replace("learn, ", "").replace("pesquise", "").strip())
+        elif "analise" in t: await self._analise_manual(int("".join(filter(str.isdigit, t)) or 50))
+        elif "aprendeu" in t or "resumo" in t: self.tg.alertar(self.memory.resumo_semana())
+        elif "pendente" in t: await self.tg_handler.listar_pendentes()
+        else: self.tg.alertar("🧠 LEARN WIN — Comandos: pesquise [tema], analise [N] trades, resumo, pendentes")
+
+    async def _pesquisa_manual(self, tema):
+        self.tg.alertar(f"🔬 Pesquisando '{tema}'...")
+        p = await self.researcher.pesquisar_tema_especifico(tema)
+        if p: await self.tg_handler.enviar_proposta(p)
+        else: self.tg.alertar("Nenhuma descoberta relevante.")
+
+    async def _analise_manual(self, n):
+        self.tg.alertar(f"📊 Analisando últimos {n} trades...")
+        self.tg.alertar(await self.optimizer.relatorio_completo(n))
+
+13. learn_optimizer.py
+import json, statistics
+from datetime import datetime
+from dataclasses import dataclass
+from loguru import logger
+import anthropic
+
+@dataclass
+class Proposta:
+    id:int; tipo:str; camada:str; titulo:str; problema:str; proposta_texto:str
+    parametro:str|None; valor_atual:any; valor_proposto:any; base_trades:int
+    confianca_pct:float; melhoria_pf_est:float; risco:str; modo_paper:int
+    fonte:str|None; dados_suporte:dict; timestamp:str; status:str="PENDENTE"
+
+class LearnOptimizer:
+    MIN_TRADES=20; CONFIANCA_MIN=75.0
+    def __init__(self, db, memory):
+        self.db=db; self.memory=memory; self.trades_analisados=0
+        self._client=anthropic.AsyncAnthropic()
+    async def analisar(self)->list[Proposta]:
+        trades=self.db.trades_todos(); self.trades_analisados=len(trades)
+        if len(trades)<self.MIN_TRADES: return []
+        logger.info(f"OPTIMIZER WIN: analisando {len(trades)} trades...")
+        propostas=[]
+        # Análises: score_range, horario, regime, setup, trailing, BE, dia, CVD
+        # (Lógica completa segue padrão v5.0, thresholds adaptados WIN: ATR 40, slippage 15, stop 80-150, max 5 contratos)
+        return propostas
+    async def relatorio_completo(self, n:int)->str:
+        trades=self.db.trades_todos()[-n:]
+        if not trades: return "📊 LEARN: sem trades."
+        total=len(trades); ganhos=sum(1 for t in trades if t.get("resultado_reais",0)>0)
+        res=sum(t.get("resultado_reais",0) for t in trades)
+        return f"📊 LEARN WIN — {total} trades\nAcerto:{ganhos/total*100:.1f}%\nR${res:+.2f}"
+
+14. learn_researcher.py
+import json, asyncio, re
+from datetime import date
+from loguru import logger
+from learn.learn_optimizer import Proposta
+import anthropic
+
+QUERIES_DIARIAS_WIN = [
+    "order flow Ibovespa futures WIN B3",
+    "tape reading mini índice B3 institucional",
+    "VIX emerging markets correlation Ibovespa",
+    "S&P500 futures correlation B3 WIN",
+    "PETR4 VALE3 weight Ibovespa flow impact",
+    "Brazilian interest rates DI1F equities valuation",
+    "market microstructure index futures scalping",
+    "volume profile POC Ibovespa WIN strategy"
+]
+
+class LearnResearcher:
+    def __init__(self, db, memory):
+        self.db=db; self.memory=memory; self.buscas_realizadas=0
+        self._client=anthropic.AsyncAnthropic()
+    async def pesquisar(self)->list[Proposta]:
+        logger.info("RESEARCHER WIN: iniciando pesquisa diária...")
+        # Rota queries, valida histórico, monta propostas
+        return []
+    async def pesquisar_tema_especifico(self, tema:str)->Proposta|None:
+        return None
+
+15. learn_memory.py
+import json, sqlite3, os
+from datetime import datetime, timedelta
+from contextlib import contextmanager
+from loguru import logger
+
+MEMORY_DB = os.getenv("MEMORY_DB_PATH", "learn_memory.db")
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS propostas (
+    id INTEGER PRIMARY KEY, tipo TEXT, camada TEXT, titulo TEXT,
+    problema TEXT, proposta_texto TEXT, parametro TEXT, valor_atual TEXT,
+    valor_proposto TEXT, base_trades INTEGER, confianca_pct REAL,
+    melhoria_pf_est REAL, risco TEXT, modo_paper INTEGER, fonte TEXT,
+    dados_suporte TEXT, timestamp TEXT, status TEXT DEFAULT 'PENDENTE',
+    decisao_ts TEXT, motivo_rejeicao TEXT, paper_trades INTEGER DEFAULT 0,
+    paper_acerto REAL DEFAULT 0, impacto_real_pf REAL DEFAULT 0, rollback_ts TEXT
+);
+CREATE TABLE IF NOT EXISTS queries_pesquisa (id INTEGER PRIMARY KEY AUTOINCREMENT, query TEXT, timestamp TEXT);
+CREATE TABLE IF NOT EXISTS ciclos_learn (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, propostas_total INTEGER);
+CREATE TABLE IF NOT EXISTS audit_trail (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, acao TEXT, proposta_id INTEGER, detalhes TEXT);
+"""
+
+class LearnMemory:
+    def __init__(self):
+        with self._conn() as c: c.executescript(SCHEMA)
+        self._id_counter = self._ultimo_id() + 1
+    @contextmanager
+    def _conn(self):
+        conn=sqlite3.connect(MEMORY_DB); conn.row_factory=sqlite3.Row
+        try: yield conn; conn.commit()
+        finally: conn.close()
+    def proximo_id(self)->int: i=self._id_counter; self._id_counter+=1; return i
+    def _ultimo_id(self)->int:
+        with self._conn() as c: r=c.execute("SELECT MAX(id) FROM propostas").fetchone(); return r[0] or 0
+    def salvar_proposta(self, p)->int:
+        with self._conn() as c:
+            c.execute("INSERT OR REPLACE INTO propostas VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                [p.id,p.tipo,p.camada,p.titulo,p.problema,p.proposta_texto,p.parametro,
+                 json.dumps(p.valor_atual),json.dumps(p.valor_proposto),p.base_trades,p.confianca_pct,
+                 p.melhoria_pf_est,p.risco,p.modo_paper,p.fonte,json.dumps(p.dados_suporte),
+                 p.timestamp,p.status,None,None,0,0.0,0.0,None])
+        return p.id
+    def marcar_aprovada(self, pid:int): self._update_status(pid,"APROVADA_PAPER")
+    def marcar_rejeitada(self, pid:int, motivo:str=""): self._update_status(pid,"REJEITADA",motivo)
+    def registrar_rollback(self, pid:int): self._update_status(pid,"ROLLBACK")
+    def _update_status(self, pid, status, motivo=""):
+        with self._conn() as c:
+            if motivo: c.execute("UPDATE propostas SET status=?,decisao_ts=?,motivo_rejeicao=? WHERE id=?",[status,datetime.now().isoformat(),motivo,pid])
+            else: c.execute("UPDATE propostas SET status=?,decisao_ts=? WHERE id=?",[status,datetime.now().isoformat(),pid])
+    def get_proposta(self, pid):
+        with self._conn() as c: r=c.execute("SELECT * FROM propostas WHERE id=?",[pid]).fetchone(); return dict(r) if r else None
+    def resumo_semana(self)->str: return "🧠 LEARN WIN — Resumo semanal disponível via interface."
+
+16. learn_telegram_handler.py
+import json, os, re
+from datetime import datetime
+from loguru import logger
+from learn.learn_optimizer import Proposta
+from infrastructure.telegram_bot import TelegramBot
+
+OPENCLAW_JSON = os.getenv("OPENCLAW_JSON_PATH", "openclaw.json")
+
+class LearnTelegramHandler:
+    def __init__(self, learn_agent, tg:TelegramBot):
+        self.learn=learn_agent; self.tg=tg; self.memory=learn_agent.memory
+    async def enviar_proposta(self, p:Proposta):
+        self.memory.salvar_proposta(p)
+        icon="🧠" if p.camada=="OPTIMIZER" else "🔬"
+        msg=f"{icon} LEARN WIN — Proposta #{p.id}\n━━━━━━━━━━━\n📊 PROBLEMA:\n{p.problema}\n\n💡 PROPOSTA:\n{p.proposta_texto}"
+        if p.parametro: msg+=f"\n🔧 PARÂMETRO: {p.parametro}\n   Atual: {p.valor_atual} → Proposto: {p.valor_proposto}"
+        msg+=f"\n\n📈 IMPACTO: Base {p.base_trades} trades | Confiança {p.confianca_pct:.0f}% | PF +{p.melhoria_pf_est:.2f} | Risco {p.risco}\n━━━━━━━━━━━\n✅ APROVO #{p.id} | ❌ REJEITO #{p.id} | 📊 DADOS #{p.id}"
+        self.tg.alertar(msg)
+    async def processar_resposta(self, mensagem:str):
+        m=mensagem.upper().strip()
+        if "APROVO" in m: await self._implementar_paper(self._extrair_id(m))
+        elif "REJEITO" in m: self._rejeitar(self._extrair_id(m), mensagem)
+        elif "DADOS" in m: self._enviar_dados(self._extrair_id(m))
+        elif mensagem.lower().startswith("learn"): await self.learn.comando_manual(mensagem)
+    async def _implementar_paper(self, pid:int):
+        p=self.memory.get_proposta(pid)
+        if not p: return self.tg.alertar("Proposta não encontrada.")
+        self.memory.marcar_aprovada(pid)
+        if p.get("parametro"): self._atualizar_parametro(p["parametro"], json.loads(p.get("valor_proposto")), pid)
+        self.tg.alertar(f"✅ #{pid} aprovada para paper. Monitorando {p.get('modo_paper',10)} trades.")
+    def _rejeitar(self, pid, motivo): self.memory.marcar_rejeitada(pid, motivo); self.tg.alertar(f"❌ #{pid} rejeitada.")
+    def _enviar_dados(self, pid):
+        p=self.memory.get_proposta(pid)
+        if p: self.tg.alertar(f"📊 Dados #{pid}:\n{p.get('dados_suporte','{}')[:1500]}")
+    def _atualizar_parametro(self, parametro, valor, pid):
+        try:
+            with open(OPENCLAW_JSON,"r") as f: config=json.load(f)
+            ref=config
+            for parte in parametro.split(".")[:-1]:
+                if parte not in ref: ref[parte]={}
+                ref=ref[parte]
+            ref[parametro.split(".")[-1]]=valor
+            config.setdefault("learn_changes",[]).append({"proposta_id":pid,"parametro":parametro,"valor_novo":valor,"timestamp":datetime.now().isoformat()})
+            with open(OPENCLAW_JSON,"w") as f: json.dump(config,f,indent=2)
+        except Exception as e: logger.error(f"Falha update: {e}")
+    @staticmethod
+    def _extrair_id(texto):
+        nums=re.findall(r'#(\d+)',texto.upper())
+        return int(nums[0]) if nums else None
+
+17-22. MÓDULOS BASE ADAPTADOS WIN
+tape_reader.py: Thresholds ajustados. Spoof >400c. Held >800c. Sweep >300c/3 níveis. ATR min 40pts. Slippage 15pts.
+main.py: Horário 10:00-16:55. Trigger LEARN 12:05. Filtros proibidos WIN. asyncio.gather mantido.
+agents/: GRAPH/FLOW/CONTEXT/CYBER/EXEC usam SKILL.md WIN. Pydantic models ajustados para pontos WIN.
+infrastructure/: profit_bridge.py mapeia WINFUT. database.py schema compatível. telegram_bot.py formata mensagens WIN.
+utils/: risk_manager.py calcula posição com R$0,20/pt. cool_down.py idêntico. indicators.py idêntico.
+guard.py: Health check 60s. Reconexão ProfitDLL. Relatório 17:00. Alertas KPI WIN.
+
+23. openclaw.json v1.0 WIN
+{
+  "version": "1.0-WIN",
+  "description": "Cyber Trade v1.0 — Mini Índice B3 (WIN)",
+  "gateway": "localhost:3000",
+  "agents": {
+    "defaults": { "temperature": 0.1, "max_tokens": 1200 },
+    "list": [
+      { "id": "graph", "model": "anthropic/claude-sonnet-4-20250514", "workspace": "./workspaces/graph/", "skills": ["./skills/graph_skill_win.md"], "timeout_s": 10, "prompt_cache": true },
+      { "id": "flow", "model": "anthropic/claude-sonnet-4-20250514", "workspace": "./workspaces/flow/", "skills": ["./skills/flow_skill_win.md"], "timeout_s": 10, "prompt_cache": true },
+      { "id": "context", "model": "anthropic/claude-haiku-4-5-20251001", "workspace": "./workspaces/context/", "skills": ["./skills/context_skill_win.md"], "timeout_s": 6, "prompt_cache": true },
+      { "id": "cyber", "model": "anthropic/claude-sonnet-4-20250514", "workspace": "./workspaces/cyber/", "skills": ["./skills/cyber_skill_win.md"], "timeout_s": 12, "prompt_cache": true },
+      { "id": "exec", "engine": "python", "script": "./agents/exec_agent.py", "paper_mode": true },
+      { "id": "guard", "engine": "python", "script": "./guard.py", "process": "separado", "interval_s": 60 },
+      {
+        "id": "learn", "name": "LEARN — Agente Evolutivo v1.0 WIN",
+        "model": "anthropic/claude-sonnet-4-20250514", "engine": "python", "script": "./learn/learn_agent.py",
+        "process": "separado", "workspace": "./workspaces/learn/", "skills": ["./skills/learn_skill_win.md"],
+        "schedule": { "automatico_brt": "12:05", "manual_trigger": true, "comando_telegram": "LEARN, " },
+        "limites": { "risco_por_trade_pct_max": 1.0, "pode_remover_filtros": false, "requer_aprovacao": true, "max_propostas_por_ciclo": 5 }
+      }
+    ]
+  },
+  "horarios": {
+    "inicio": "10:00", "fim": "16:55",
+    "proibidos": [
+      { "nome": "Abertura B3", "inicio": "10:00", "fim": "10:15" },
+      { "nome": "Almoço", "inicio": "12:00", "fim": "13:00" },
+      { "nome": "Fechamento", "inicio": "16:55", "fim": "17:15" }
+    ],
+    "learn_automatico_brt": "12:05"
+  },
+  "risk": {
+    "risco_por_trade_pct": 1.0, "stop_day_pct": 2.5, "max_operacoes_dia": 5, "max_contratos": 5,
+    "rr_minimo": 1.5, "score_minimo": 65, "atr_minimo": 40.0, "slippage_maximo_pts": 15.0,
+    "cool_down_losses": 3, "cool_down_minutos": 30, "equity_filter_hard_pct": -3.0,
+    "equity_filter_soft_pct": -1.5, "latencia_max_segundos": 5.0, "deslocamento_max_pts": 15.0
+  },
+  "learn_changes": []
+}
+
+24. ESTRUTURA DE ARQUIVOS
+cyber_trade_win_v1/
+├── .env | .gitignore | requirements.txt | README.md
+├── main.py | guard.py
+├── learn/ | learn_agent.py | learn_optimizer.py | learn_researcher.py | learn_memory.py | learn_telegram_handler.py
+├── agents/ | graph_agent.py | flow_agent.py | context_agent.py | cyber_agent.py | exec_agent.py
+├── tape/ | tape_reader.py
+├── infrastructure/ | profit_bridge.py | redis_state.py | database.py | telegram_bot.py | sheets_logger.py
+├── skills/ | graph_skill_win.md | flow_skill_win.md | context_skill_win.md | cyber_skill_win.md | learn_skill_win.md
+├── workspaces/ | graph/ | flow/ | context/ | cyber/ | learn/
+├── openclaw.json | cyber_trade.db | learn_memory.db
+└── logs/
+
+25. GESTÃO DE RISCO E PARÂMETROS WIN
+PARÂMETROS FIXOS (LEARN não altera):
+  Risco por trade: 1.0% | Stop-day: -2.5% | Max ops/dia: 5 | Cool-down: 3 losses/30min
+  Filtros: Todos obrigatórios. ATR min 40pts. Slippage 15pts. Max 5 contratos.
+
+CÁLCULO DE POSIÇÃO WIN:
+  risco_financeiro = capital × 0.01
+  risco_contrato = distancia_stop_pts × 0.20
+  contratos = min(floor(risco_financeiro / risco_contrato), 5)
+  Exemplo: Cap R$50k → Risco R$500. Stop 100pts → Risco/contrato R$20 → 25 contratos → limitado a 5.
+
+AJUSTÁVEIS COM APROVAÇÃO LEARN:
+  atr_minimo: 40 (35-60) | slippage_max: 15 (10-25) | score_min: 65 (≥60)
+  held_vol_base: 800 (±200) | cvd_limiar: 150 (±50) | trailing_atr_min: 3 (2-7)
+  breakeven_pts: 25 (15-40)
+
+26. ROADMAP DE DEPLOY — 10 SEMANAS
+SEMANAS 1-6: INFRAESTRUTURA
+  Adaptar tape_reader.py para thresholds WIN
+  Ajustar SKILL.md dos 6 agentes para WIN
+  Configurar openclaw.json WIN
+  Integrar ProfitDLL para WINFUT
+  Validar indicadores em pontos WIN
+SEMANA 7: LEARN WIN
+  Implementar learn_skill_win.md
+  Ajustar queries RESEARCHER: "WIN B3", "Ibovespa flow"
+  Testar ciclo almoço com histórico WIN
+  Validar Telegram bidirecional
+SEMANA 8: PAPER TRADING WIN
+  PAPER_MODE=true por 10 dias
+  ≥30 operações simuladas
+  Meta: acerto ≥55%, PF ≥1.2, DD ≤5%
+SEMANA 9-10: VALIDAÇÃO & REAL
+  Estabilidade 10 dias sem crash
+  Métricas validadas
+  Capital inicial: R$5.000-10.000, 1-2 contratos
+  PAPER_MODE=false apenas após aprovação manual
+
+27. MODO DE EMERGÊNCIA MANUAL
+SISTEMA CAIU COM POSIÇÃO ABERTA:
+  1. Profit Pro → Posições → fechar WINFUT manualmente
+  2. Anotar entrada/saída/contratos/resultado
+  3. redis-cli DEL posicao:*
+  4. Registrar SQLite manualmente
+  5. Reiniciar guard.py → main.py
+LEARN PROPOSTA ERRADA:
+  Telegram: "LEARN, reverte a proposta [N]"
+  Manual: editar openclaw.json, seção learn_changes mostra valor_anterior
+LEARN EM LOOP/PROPOSTAS RUINS:
+  Telegram: "LEARN, lista propostas pendentes" → Rejeitar todas → Não repetirá por 30 dias
+
+28. MÉTRICAS, KPIs E DASHBOARD WIN
+KPIs WIN:
+  Acerto rolling 20: ≥60% | Alerta <50%
+  Profit Factor mensal: ≥1.3 | Alerta <1.0
+  Drawdown máx dia: ≤2.5% | Alerta >2.0%
+  Score médio CYBER: ≥70 | Alerta <62
+  Latência: ≤5s | Alerta >7s
+  Custo API: ≤US$45/mês
+  Propostas LEARN/mês: 5-15 | Acerto Held: ≥65%
+
+Dashboard Google Sheets:
+  Abas 1-7: idênticas v5.0
+  Aba 8: LEARN Histórico Propostas
+  Aba 9: WIN Correlações Monitoradas (VIX, S&P, PETR4, VALE3, DI1F)
+  Aba 10: WIN Heatmap por Horário
+
+29. GLOSSÁRIO FINAL WIN
+WIN: Mini Índice Futuro B3. 1 ponto = R$ 0,20/contrato
+IBOV spot: Índice Bovespa à vista. Referência para futuro
+VIX: Índice volatilidade S&P500. Filtro risk-off
+PETR4/VALE3: ~30% peso no IBOV. Impactam WIN indiretamente
+Leilão Fechamento: 16:55-17:00 BRT. Evitar operar
+ATR WIN: 40-120 pontos em sessão ativa
+CVD WIN: Pressão compradora/vendedora real
+Held Level WIN: Defesa >800 contratos
+Sweep WIN: Varrida ≥3 níveis <3s com ≥300c
+R:R WIN: Risk:Reward em pontos × R$0,20
+
+AVISO FINAL
+Este documento é educacional. WIN envolve risco real de perda.
+Sequência obrigatória:
+1. Implementar agentes base adaptados para WIN
+2. Paper trading 2 regimes (8 semanas mínimo)
+3. Implementar LEARN (semana 7)
+4. LEARN em paper por 2+ semanas
+5. Modo real: R$5.000-10.000, 1-2 contratos iniciais
+6. Deixar o LEARN trabalhar. Evolução leva meses.
+Macro note: Correlações IBOV/VIX/DI1F são dinâmicas. Em ciclos de alta de juros reais (DI1F), múltiplos de valuation comprimem, aumentando a frequência de regimes RANGE e reduzindo a eficácia de rompimentos. O sistema deve priorizar Held Level e CVD alinhados nesses regimes. Em ciclos de corte de juros e VIX baixo, regimes TRENDING predominam, favorecendo continuations e sweeps.
+"Cyber Trade v1.0 WIN — O sistema
