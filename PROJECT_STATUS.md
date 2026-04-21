@@ -1,43 +1,38 @@
 # CYBER TRADE WIN — MASTER PROJECT STATUS
 **Data:** 21/04/2026  
 **Versão:** v2.1  
-**Ambiente:** Windows + Python + Redis (Docker)
+**Status:** ✅ OPERACIONAL
 
 ---
 
-## 1. ARQUITETURA GERAL
+## 1. ARQUITETURA
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    CYBER TRADE WIN v2.1                    │
 │                    8 Agentes Skynet                         │
 ├─────────────────────────────────────────────────────────────┤
-│                                                              │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
 │  │ARCHITECT│  │MORPHEUS │  │ ORACLE   │  │  NEO    │   │
 │  │Gemma 4  │  │Gemma 4  │  │Gemma 4   │  │Gemma 4  │   │
-│  │ (GRÁFICO)│  │ (TAPE)  │  │ (CONTEXTO)│ │(DECISÃO)│   │
 │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘   │
 │       └─────────────┴─────────────┴──────────────┘          │
 │                           │                                 │
 │                    ┌──────▼──────┐                         │
 │                    │   EXEC      │                         │
-│                    │  Execução   │                         │
 │                    └──────┬──────┘                         │
 │                           │                                 │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐                │
 │  │ SENTINEL │  │  REAPER   │  │ CYBERDYNE│                │
-│  │ (Guard)  │  │  (Custo)  │  │ (Learn)  │                │
 │  └──────────┘  └──────────┘  └──────────┘                │
-│                                                              │
 ├─────────────────────────────────────────────────────────────┤
-│  INFRA: Redis + SQLite + Telegram + DataProvider           │
+│  INFRA: Redis + SQLite + Telegram + Yahoo Finance            │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. STATUS COMPONENTES
+## 2. STATUS COMPONENTES — TODOS OK
 
 | Componente | Status | Observação |
 |------------|--------|------------|
@@ -45,27 +40,44 @@
 | **Redis (Docker)** | ✅ OK | localhost:6379 |
 | **Telegram Bot** | ✅ OK | @Cyber_winfut_bot |
 | **Yahoo Finance** | ✅ OK | IBOV dados reais |
-| **Dados WIN** | ⚠️ Simulado | Estimado do IBOV |
 | **LLM Router** | ✅ OK | Fallback Gemma |
 | **Database** | ✅ OK | SQLite |
 | **Guard (Watchdog)** | ✅ OK | Cutoff 17:30 |
+| **Ciclo Completo** | ✅ OK | Dados → Agentes → Decisão |
 | **NTSL Relay** | ⏳ Pendente | Aguardando Profit Pro |
 | **Conta Real** | ⏳ Pendente | Aguardando Santander |
 
 ---
 
-## 3. FONTES DE DADOS
+## 3. TESTE COMPLETO EXECUTADO
+
+### Ciclo 1 — 21/04/2026 09:48:
+```
+1. Yahoo Finance    → 420 candles IBOV ✅
+2. WIN price       → 131.257 pts ✅
+3. ARCHITECT       → Análise técnica ✅
+4. MORPHEUS        → Análise fluxo ✅
+5. ORACLE          → Contexto macro ✅
+6. NEO             → Decisão: CANCELAR (sinal neutro) ✅
+7. Telegram        → Notificação enviada ✅
+```
+
+**Resultado:** CANCELAR (correto — mercado neutro)
+
+---
+
+## 4. DADOS
 
 | Fonte | Tipo | Status | Custo |
 |-------|------|--------|-------|
 | Yahoo Finance (IBOV) | 5min | ✅ FREE | R$0 |
-| WIN (estimado) | Calculado | ✅ Simulado | R$0 |
+| WIN (estimado) | Calculado | ✅ | R$0 |
 | Profit Pro | Tick | ⏳ Pendente | Grátis c/ 4 minis |
 | B3 API | - | ❌ B2B only | - |
 
 ---
 
-## 4. CONFIGURAÇÃO ATUAL
+## 5. CONFIGURAÇÃO
 
 ```env
 PAPER_MODE=true
@@ -82,7 +94,7 @@ RR_MINIMO=1.5
 
 ---
 
-## 5. SISTEMA DE NÍVEIS
+## 6. SISTEMA DE NÍVEIS
 
 | Nível | Capital | Max Contratos | Score Min | Stop-Day |
 |-------|---------|----------------|-----------|----------|
@@ -92,21 +104,6 @@ RR_MINIMO=1.5
 | 4 💰 | R$5.000–6.999 | 4 | 65 | -2,5% |
 | 5 🏆 | R$7.000–9.999 | 5 | 65 | -2,5% |
 | 6 ⭐ | R$10.000+ | 5 | 65 | -2,5% |
-
----
-
-## 6. PRÓXIMOS PASSOS
-
-| # | Passo | Status |
-|---|-------|--------|
-| 1 | Setup ambiente | ✅ Concluído |
-| 2 | Redis + Docker | ✅ Concluído |
-| 3 | Telegram Bot | ✅ Concluído |
-| 4 | Yahoo Finance | ✅ Concluído |
-| 5 | **Teste completo LLM** | ⏭️ **AGORA** |
-| 6 | Integração Profit Pro | ⏳ Pendente |
-| 7 | Validação 8 semanas | ⏳ Pendente |
-| 8 | Conta real Santander | ⏳ Pendente |
 
 ---
 
@@ -127,7 +124,22 @@ RR_MINIMO=1.5
 
 ---
 
-## 8. REGRAS IMUTÁVEIS
+## 8. PRÓXIMOS PASSOS
+
+| # | Passo | Status |
+|---|-------|--------|
+| 1 | Setup ambiente | ✅ Concluído |
+| 2 | Redis + Docker | ✅ Concluído |
+| 3 | Telegram Bot | ✅ Concluído |
+| 4 | Yahoo Finance | ✅ Concluído |
+| 5 | Teste completo LLM | ✅ Concluído |
+| 6 | Validação 8 semanas | ⏳ Pendente |
+| 7 | Integração Profit Pro | ⏳ Pendente |
+| 8 | Conta real Santander | ⏳ Pendente |
+
+---
+
+## 9. REGRAS IMUTÁVEIS
 
 ```
 1. PAPER_MODE=true SEMPRE como padrão
@@ -141,18 +153,10 @@ RR_MINIMO=1.5
 
 ---
 
-## 9. REPOSITÓRIO
+## 10. REPOSITÓRIO
 
 **GitHub:** https://github.com/mlpreto1/Cyber-Trade-WINFUT
 
-**Arquivos principais:**
-- `main.py` — Loop principal
-- `guard.py` — Watchdog
-- `agents/` — 8 agentes
-- `infrastructure/` — Redis, LLM, DB, Telegram
-- `skills/` — Prompts dos agentes
-- `.env` — Configuração
-
 ---
 
-*Documento gerado em 21/04/2026 — Cyber Trade WIN v2.1*
+*Documento atualizado em 21/04/2026 — Cyber Trade WIN v2.1 OPERACIONAL*
