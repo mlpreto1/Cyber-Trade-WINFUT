@@ -167,6 +167,7 @@ class DataProvider:
         self._dia_inicial = None
         self._perguntou_proximo = False
         self._ja_terminou_dia = False
+        self._hist_tick = 0  # Tick histórico para avançar candles
 
     def set_redis(self, redis_state):
         self.redis_state = redis_state
@@ -210,48 +211,73 @@ class DataProvider:
                 pass
 
     async def get_dados_candle(self, timeframe: str = "5min", candles: int = 20) -> List[dict]:
-        cache_key = f"{self.source}:{timeframe}:{candles}"
+        mercado_fechado = not (_dia_de_pregao() and _horario_mercado_aberto())
+        
+        # Para histórico: usar cache de 1s e janela deslizante
+        cache_key_base = f"{self.source}:{timeframe}"
+        cache_ttl = 1 if mercado_fechado else self._cache_ttl_segundos
+        
+        # Buscar dados frescos se cache expirou
+        cache_key = f"{cache_key_base}:{candles}:raw"
         cached = self._cache_candles.get(cache_key)
-        if cached:
-            if (datetime.now() - cached["timestamp"]).total_seconds() < self._cache_ttl_segundos:
-                logger.debug(f"[CACHE] Candles {cache_key} retornados do cache")
-                return cached["data"]
-
-        if self.source == "mt5":
-            if _dia_de_pregao() and _horario_mercado_aberto():
-                self._dia_offset = 0
-                self._dia_inicial = None
-                self._perguntou_proximo = False
-                self._ja_terminou_dia = False
-                logger.info("[MT5] Mercado ABERTO - dados tempo real")
-                data = await self._buscar_mt5_candles_tempo_real(timeframe, candles)
-            else:
-                if self._dia_inicial is None:
-                    self._dia_inicial = _dia_util_4_semanas_atras()
+        
+        if cached and (datetime.now() - cached["timestamp"]).total_seconds() < cache_ttl:
+            todos_candles = cached["data"]
+        else:
+            if self.source == "mt5":
+                if _dia_de_pregao() and _horario_mercado_aberto():
                     self._dia_offset = 0
+                    self._dia_inicial = None
                     self._perguntou_proximo = False
                     self._ja_terminou_dia = False
-                    logger.warning(f"[MT5] Mercado FECHADO - iniciando do dia {self._dia_inicial.date()}")
-                
-                data = await self._buscar_mt5_candles_por_dia(timeframe, candles, self._dia_offset)
-                
-                if data:
-                    ultimo_candle = data[-1].get("timestamp", "")[:10]
-                    if self._dia_offset == 0:
-                        logger.info(f"[MT5] Dia atual: {ultimo_candle}")
+                    logger.info("[MT5] Mercado ABERTO - dados tempo real")
+                    todos_candles = await self._buscar_mt5_candles_tempo_real(timeframe, candles)
                 else:
-                    self._ja_terminou_dia = True
-        elif self.source == "brapi":
-            data = await self._buscar_brapi_win(timeframe, candles)
-        elif self.source == "profit":
-            data = await self._buscar_profit_win(timeframe, candles)
-        elif self.source == "yahoo":
-            data = await self._buscar_yahoo_ibov(candles)
-        else:
-            data = await self._buscar_yahoo_ibov(candles)
-
-        self._cache_candles[cache_key] = {"data": data, "timestamp": datetime.now()}
-        return data
+                    if self._dia_inicial is None:
+                        self._dia_inicial = _dia_util_4_semanas_atras()
+                        self._dia_offset = 0
+                        self._perguntou_proximo = False
+                        self._ja_terminou_dia = False
+                        logger.warning(f"[MT5] Mercado FECHADO - historico {self._dia_inicial.date()}")
+                    
+                    todos_candles = await self._buscar_mt5_candles_por_dia(timeframe, candles + 50, self._dia_offset)
+                    
+                    if todos_candles:
+                        ultimo_candle = todos_candles[-1].get("timestamp", "")[:10]
+                        if self._dia_offset == 0:
+                            logger.info(f"[MT5] Dia historico: {ultimo_candle} ({len(todos_candles)} candles)")
+                    else:
+                        self._ja_terminou_dia = True
+                        todos_candles = []
+            else:
+                todos_candles = []
+            
+            self._cache_candles[cache_key] = {"data": todos_candles, "timestamp": datetime.now()}
+        
+        if not todos_candles:
+            return []
+        
+        # Janela deslizante: avançar 1 candle a cada ciclo para simular tempo
+        if mercado_fechado:
+            # Limitar _hist_tick para não ultrapassar o tamanho
+            max_tick = max(0, len(todos_candles) - candles)
+            if self._hist_tick > max_tick:
+                self._hist_tick = 0  # Reiniciar loop quando terminar
+            
+            start_idx = self._hist_tick
+            end_idx = start_idx + candles
+            
+            # Log a cada 10 ticks
+            if self._hist_tick % 10 == 0:
+                tick_time = todos_candles[min(start_idx, len(todos_candles)-1)].get("timestamp", "N/A")[:16] if todos_candles else "N/A"
+                logger.info(f"[HIST] Tick {self._hist_tick}/{max_tick} | Time: {tick_time}")
+            
+            resultado = todos_candles[start_idx:end_idx]
+            self._hist_tick += 1
+            return resultado
+        
+        # Mercado aberto: usar últimos candles
+        return todos_candles[-candles:]
 
     def get_info_dados(self) -> dict:
         info = {
@@ -289,15 +315,31 @@ class DataProvider:
         self._perguntou_proximo = True
         self._ja_terminou_dia = False
         self._cache_candles = {}
+        self._hist_tick = 0  # Reset tick para novo dia
         logger.info(f"[MT5] Avanzando para offset {self._dia_offset}: {data.date()}")
 
     async def get_preco_atual(self) -> float:
+        mercado_fechado = not (_dia_de_pregao() and _horario_mercado_aberto())
+        
         if self.source == "mt5":
-            if _dia_de_pregao() and _horario_mercado_aberto():
+            if not mercado_fechado:
                 return await self._get_preco_mt5()
-            else:
-                logger.warning("[MT5] Mercado fechado, preco historico")
-                return await self._get_preco_mt5_historico()
+            
+            # Mercado fechado: usar preco do ultimo candle da janela historica
+            cache_key = f"mt5:5min:50:raw"
+            cached = self._cache_candles.get(cache_key)
+            if cached and cached.get("data"):
+                todos = cached["data"]
+                idx = min(self._hist_tick, len(todos) - 1)
+                if todos and idx >= 0:
+                    preco = todos[idx].get("close", 0)
+                    if preco > 0:
+                        logger.debug(f"[HIST] Preco tick {self._hist_tick}: {preco}")
+                        return float(preco)
+            
+            # Fallback
+            logger.warning("[MT5] Mercado fechado, preco historico fallback")
+            return await self._get_preco_mt5_historico()
         elif self.source == "brapi":
             return await self._get_preco_brapi()
         elif self.source == "profit":
