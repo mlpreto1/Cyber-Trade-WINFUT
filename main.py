@@ -94,6 +94,9 @@ class CyberTradeWIN:
             ciclo += 1
             logger.info(f"[CYCLE {ciclo}] Running...")
 
+            # Poll Telegram callbacks
+            await self._poll_telegram()
+
             if self._cutoff_atingido():
                 logger.info("[STOP] Cutoff reached")
                 self.tg.alertar("[STOP] Cutoff 17:30 - encerrando")
@@ -101,6 +104,20 @@ class CyberTradeWIN:
 
             await self._ciclo_completo(ciclo)
             await asyncio.sleep(10)
+
+    async def _poll_telegram(self):
+        try:
+            updates = self.tg.get_updates()
+            for update in updates:
+                if "callback_query" in update:
+                    cb = update["callback_query"]
+                    data = cb.get("data", "")
+                    if data == "proximo_dia":
+                        self.tg.alertar("🔄 Buscando dia anterior...")
+                        self.data_provider.avanca_proximo_dia()
+                        self.data_provider._cache_candles = {}
+        except Exception as e:
+            logger.debug(f"Telegram poll: {e}")
 
     def _cutoff_atingido(self) -> bool:
         agora = datetime.now().time()
@@ -149,6 +166,15 @@ class CyberTradeWIN:
                 }, "🔮")
 
             logger.info(f"[CYCLE {num}] Preco: {preco_atual} | Candles: {len(candles_5m)} | Dados: {info_dados.get('ultimo_candle', 'N/A')}")
+
+            # Verificar se dia historico terminou
+            if info_dados.get("ja_terminou") and not info_dados.get("dia_pregao"):
+                dia_fim = info_dados.get("ultimo_candle", "?")
+                self.tg.send_inline(
+                    f"📅 Dados do dia {dia_fim} finalizados.\nBuscar dia anterior?",
+                    "▶️ Proximo dia",
+                    "proximo_dia"
+                )
 
             self.redis_state.set("preco_atual_win", str(preco_atual))
             self.redis_state.set("ciclo_atual", str(num))
