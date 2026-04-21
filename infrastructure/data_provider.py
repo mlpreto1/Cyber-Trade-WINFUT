@@ -4,9 +4,9 @@
 import asyncio
 import logging
 import os
+import requests
 from datetime import datetime, timedelta
 from calendar import monthcalendar
-import requests
 
 _feriados_b3_cache = {}
 _ultimo_update = None
@@ -60,19 +60,15 @@ def _dia_de_pregao() -> bool:
     if (agora.month, agora.day) in FERIADOS_B3_2026:
         return False
     return True
+
+
 from typing import Dict, List, Optional
 
 logger = logging.getLogger("data_provider")
 
-REQUESTS_AVAILABLE = False
+REQUESTS_AVAILABLE = True
 YFINANCE_AVAILABLE = False
 MT5_AVAILABLE = False
-
-try:
-    import requests
-    REQUESTS_AVAILABLE = True
-except ImportError:
-    pass
 
 try:
     import yfinance as yf

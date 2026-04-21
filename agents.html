@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>CYBER TRADE - AGENTS</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a0a;
+            font-family: 'VT323', monospace;
+            color: #00ff00;
+            padding: 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        
+        h1 {
+            text-align: center;
+            font-size: 48px;
+            color: #00ffff;
+            text-shadow: 0 0 10px #00ffff;
+            margin-bottom: 30px;
+            letter-spacing: 8px;
+        }
+        
+        .sistema {
+            background: #111;
+            border: 2px solid #00ff00;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-around;
+            font-size: 24px;
+        }
+        
+        .sistema span { color: #ffff00; }
+        
+        .agents-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .agent {
+            background: #0d0d0d;
+            border: 2px solid #333;
+            padding: 15px;
+        }
+        
+        .agent.architect { border-color: #00bfff; }
+        .agent.morpheus { border-color: #00ffff; }
+        .agent.oracle { border-color: #ff00ff; }
+        .agent.neo { border-color: #00ff00; }
+        
+        .agent-title {
+            font-size: 28px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .agent.architect .agent-title { color: #00bfff; }
+        .agent.morpheus .agent-title { color: #00ffff; }
+        .agent.oracle .agent-title { color: #ff00ff; }
+        .agent.neo .agent-title { color: #00ff00; }
+        
+        .agent-data { font-size: 18px; color: #aaa; }
+        .agent-data span { color: #fff; }
+        
+        .decisao {
+            background: #111;
+            border: 4px solid #333;
+            padding: 30px;
+            text-align: center;
+            font-size: 36px;
+        }
+        
+        .decisao.armar { border-color: #00ff00; color: #00ff00; }
+        .decisao.cancelar { border-color: #ffff00; color: #ffff00; }
+        .decisao.fechar { border-color: #ff0000; color: #ff0000; }
+        
+        .footer {
+            text-align: center;
+            color: #666;
+            margin-top: 20px;
+            font-size: 16px;
+        }
+        
+        .pixel-art {
+            image-rendering: pixelated;
+            display: inline-block;
+        }
+    </style>
+    <meta http-equiv="refresh" content="5">
+</head>
+<body>
+    <div class="container">
+        <h1>▓▓ CYBER TRADE ▓▓</h1>
+        
+        <div class="sistema">
+            <div>PREÇO: <span>200430</span></div>
+            <div>PnL: <span>+0.00%</span></div>
+            <div>OPS: <span>0</span></div>
+            <div>MODO: <span>PAPER</span></div>
+        </div>
+        
+        <div class="agents-grid">
+            <div class="agent architect">
+                <div class="agent-title">🏗️ ARCHITECT</div>
+                <div class="agent-data">
+                    <div>Sinal: <span>NEUTRO</span></div>
+                    <div>Confiança: <span>50</span></div>
+                    <div>EMA9: <span>200229</span></div>
+                    <div>ATR: <span>97.1</span></div>
+                    <div>RSI: <span>0.0</span></div>
+                </div>
+            </div>
+            
+            <div class="agent morpheus">
+                <div class="agent-title">🌊 MORPHEUS</div>
+                <div class="agent-data">
+                    <div>Fluxo: <span>NEUTRO</span></div>
+                    <div>Força: <span>50</span></div>
+                    <div>CVD: <span>0</span></div>
+                    <div>Volume: <span>0</span></div>
+                </div>
+            </div>
+            
+            <div class="agent oracle">
+                <div class="agent-title">🔮 ORACLE</div>
+                <div class="agent-data">
+                    <div>Regime: <span>RANGE</span></div>
+                    <div>Macro: <span>NORMAL</span></div>
+                    <div>Tendência: <span>INDEFINIDA</span></div>
+                </div>
+            </div>
+            
+            <div class="agent neo">
+                <div class="agent-title">🎯 NEO</div>
+                <div class="agent-data">
+                    <div>Decisão: <span>CANCELAR</span></div>
+                    <div>Score: <span>0</span></div>
+                    <div>Direção: <span>-</span></div>
+                    <div>Motivo: <span>ARCHITECT: NEUTRO</span></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="decisao cancelar">
+            ▓▓ CANCELAR ▓▓
+            <br>
+            <small>ARCHITECT: NEUTRO</small>
+        </div>
+        
+        <div class="footer">
+            CYBER TRADE WIN v2.4 | Atualizado: 13:37:07
+        </div>
+    </div>
+</body>
+</html>

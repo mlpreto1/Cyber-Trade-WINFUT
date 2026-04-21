@@ -1,5 +1,5 @@
 # main.py
-# CYBER TRADE WIN v2.4 — Main Loop Completo com LLM e Indicadores Reais
+# CYBER TRADE WIN v2.6 — Mercado Fechado = Dados Históricos
 
 import asyncio
 import logging
