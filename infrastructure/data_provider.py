@@ -135,7 +135,7 @@ def _dia_util_4_semanas_atras() -> datetime:
     for i in range(28, 40):
         dia = agora - timedelta(days=i)
         if _eh_dia_util(dia):
-            logger.info(f"[MT5] 4 semanas atrata: {dia.date()} (weekday={dia.weekday()})")
+            logger.info(f"[MT5] 4 semanas atras: {dia.date()} (weekday={dia.weekday()})")
             return dia
     return agora - timedelta(days=28)
 
@@ -232,7 +232,7 @@ class DataProvider:
                     self._dia_offset = 0
                     self._perguntou_proximo = False
                     self._ja_terminou_dia = False
-                    logger.warning(f"[MT5] Mercado FECHOADO - iniciando do dia {self._dia_inicial.date()}")
+                    logger.warning(f"[MT5] Mercado FECHADO - iniciando do dia {self._dia_inicial.date()}")
                 
                 data = await self._buscar_mt5_candles_por_dia(timeframe, candles, self._dia_offset)
                 
