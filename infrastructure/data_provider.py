@@ -419,8 +419,9 @@ class DataProvider:
                             "close": float(r[4]),
                             "volume": int(r[5]),
                         })
-                    logger.info(f"[MT5] {target.date()} ({sym}): {len(dados)} candles")
-                    return dados[:candles]
+                    retornados = dados[:candles]
+                    logger.info(f"[MT5] {target.date()}: {len(retornados)} candles para analise")
+                    return retornados
                 else:
                     logger.warning(f"[MT5] Sem dados para {target.date()}")
                     return []
