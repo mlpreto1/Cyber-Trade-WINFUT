@@ -1,7 +1,7 @@
 # CYBER TRADE WIN — MASTER PROJECT STATUS
 **Data:** 21/04/2026
-**Versão:** v2.6
-**Status:** ✅ Mercado Fechado — Dados Históricos 28 dias úteis, Feriados B3, MT5 Clear
+**Versão:** v2.6.2
+**Status:** ✅ Mercado Fechado — 4 semanas atrás, 1 dia por vez, perguntar próximo
 
 ---
 
