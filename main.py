@@ -89,7 +89,7 @@ class CyberTradeWIN:
                 break
 
             await self._ciclo_completo(ciclo)
-            await asyncio.sleep(30)
+            await asyncio.sleep(10)
 
     def _cutoff_atingido(self) -> bool:
         agora = datetime.now().time()
@@ -163,11 +163,17 @@ class CyberTradeWIN:
             self._salvar_log("MORPHEUS", f"Fluxo: {fluxo.get('direcao_fluxo')} | Forca: {fluxo.get('forca_fluxo')} | CVD: {fluxo.get('cvd_total')}")
             self._salvar_log("ORACLE", f"Regime: {contexto.get('regime_mercado')} | Macro: {contexto.get('status_macro')} | Tend: {contexto.get('tendencia_mercado')}")
 
+            capital_atual = self.redis_state.get_capital() or 1000.0
+            resultado_hoje = self.db.get_resultado_hoje()
+            pnl_dia_pct = (resultado_hoje / capital_atual) * 100 if capital_atual > 0 else 0.0
+            self.operacoes_hoje = self.db.get_trades_hoje()
+
             entrada = {
                 "estado_sistema": {
-                    "capital_atual": self.redis_state.get_capital() or 1000.0,
+                    "capital_atual": capital_atual,
                     "operacoes_hoje": self.operacoes_hoje,
-                    "pnl_dia_pct": 0.0,
+                    "pnl_dia_pct": round(pnl_dia_pct, 2),
+                    "resultado_hoje": resultado_hoje,
                     "nivel_atual": 1,
                     "modo": "PAPER" if PAPER_MODE else "REAL",
                     "horario_atual": datetime.now().strftime("%H:%M")
@@ -176,6 +182,8 @@ class CyberTradeWIN:
                 "flow": fluxo,
                 "context": contexto,
             }
+
+            self._salvar_log("SYSTEM", f"PnL: {pnl_dia_pct:.2f}% | Ops: {self.operacoes_hoje} | Capital: R${capital_atual:.0f}")
 
             logger.info("[AGENTS] Calling NEO...")
             resultado = await cyber.decidir(entrada)

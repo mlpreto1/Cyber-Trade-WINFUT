@@ -53,6 +53,8 @@ class DataProvider:
         self._preco_win_valido = False
         self._brapi_token = os.getenv("BRAPI_TOKEN", "")
         self._mt5_inicializado = False
+        self._cache_candles = {}
+        self._cache_ttl_segundos = 30
 
     def set_redis(self, redis_state):
         self.redis_state = redis_state
@@ -91,15 +93,26 @@ class DataProvider:
                 pass
 
     async def get_dados_candle(self, timeframe: str = "5min", candles: int = 20) -> List[dict]:
+        cache_key = f"{self.source}:{timeframe}:{candles}"
+        cached = self._cache_candles.get(cache_key)
+        if cached:
+            if (datetime.now() - cached["timestamp"]).total_seconds() < self._cache_ttl_segundos:
+                logger.debug(f"[CACHE] Candles {cache_key} retornados do cache")
+                return cached["data"]
+
         if self.source == "mt5":
-            return await self._buscar_mt5_candles(timeframe, candles)
+            data = await self._buscar_mt5_candles(timeframe, candles)
         elif self.source == "brapi":
-            return await self._buscar_brapi_win(timeframe, candles)
+            data = await self._buscar_brapi_win(timeframe, candles)
         elif self.source == "profit":
-            return await self._buscar_profit_win(timeframe, candles)
+            data = await self._buscar_profit_win(timeframe, candles)
         elif self.source == "yahoo":
-            return await self._buscar_yahoo_ibov(candles)
-        return await self._buscar_yahoo_ibov(candles)
+            data = await self._buscar_yahoo_ibov(candles)
+        else:
+            data = await self._buscar_yahoo_ibov(candles)
+
+        self._cache_candles[cache_key] = {"data": data, "timestamp": datetime.now()}
+        return data
 
     async def get_preco_atual(self) -> float:
         if self.source == "mt5":

@@ -23,8 +23,15 @@ class ExecAgent:
         self.db = db
         self.tg = tg
         self._posicao = None
+        self._erros_consecutivos = 0
+        self._limite_erros = int(os.getenv("CIRCUIT_BREAKER_LIMIT", "3"))
+        self._circuit_ativo = False
 
     async def armar(self, cyber_output: dict) -> bool:
+        if self._circuit_ativo:
+            logger.warning("[EXEC] Circuit breaker ATIVO - pulando")
+            return False
+
         if not self._validar_json(cyber_output):
             return False
 
@@ -58,22 +65,28 @@ class ExecAgent:
             logger.error(f"Erro gatilho: {e}")
 
     async def _executar_entrada(self, estado: dict):
-        preco = self._preco_atual()
-        if preco is None:
-            self.tg.alertar("❌ Preço indisponível")
-            return
+        try:
+            preco = self._preco_atual()
+            if preco is None:
+                self._registrar_erro("Preço indisponível")
+                self.tg.alertar("❌ Preço indisponível")
+                return
 
-        slippage = abs(preco - estado["entrada"])
-        if slippage > SLIPPAGE_MAX:
-            self.tg.alertar(f"❌ Slippage {slippage:.0f}pts > {SLIPPAGE_MAX:.0f}")
-            return
+            slippage = abs(preco - estado["entrada"])
+            if slippage > SLIPPAGE_MAX:
+                self._registrar_erro(f"Slippage {slippage:.0f}pts > {SLIPPAGE_MAX:.0f}")
+                self.tg.alertar(f"❌ Slippage {slippage:.0f}pts > {SLIPPAGE_MAX:.0f}")
+                return
 
-        ordem_id = f"PAPER_WIN_{uuid.uuid4().hex[:8]}"
-        estado["status"] = "ABERTA"
-        estado["ordem_id"] = ordem_id
-        self._posicao = estado
-        self.redis.set("posicao_aberta", json.dumps(estado))
-        self.tg.alertar(f"✅ ENTRADA {estado['direcao']} @ {preco:.0f}")
+            ordem_id = f"PAPER_WIN_{uuid.uuid4().hex[:8]}"
+            estado["status"] = "ABERTA"
+            estado["ordem_id"] = ordem_id
+            self._posicao = estado
+            self.redis.set("posicao_aberta", json.dumps(estado))
+            self.tg.alertar(f"✅ ENTRADA {estado['direcao']} @ {preco:.0f}")
+            self._erros_consecutivos = 0
+        except Exception as e:
+            self._registrar_erro(str(e))
 
     async def fechar(self, motivo: str):
         if not self._posicao:
@@ -109,6 +122,23 @@ class ExecAgent:
     def _preco_atual(self) -> float:
         v = self.redis.get("preco_atual_win")
         return float(v) if v else None
+
+    def _registrar_erro(self, erro: str):
+        self._erros_consecutivos += 1
+        logger.warning(f"[EXEC] Erro #{self._erros_consecutivos}: {erro}")
+        if self._erros_consecutivos >= self._limite_erros:
+            self._ativar_circuit_breaker()
+
+    def _ativar_circuit_breaker(self):
+        self._circuit_ativo = True
+        msg = f"🛑 CIRCUIT BREAKER ATIVADO após {self._erros_consecutivos} erros"
+        logger.critical(msg)
+        self.tg.alertar(msg)
+
+    def reset_circuit(self):
+        self._erros_consecutivos = 0
+        self._circuit_ativo = False
+        logger.info("[EXEC] Circuit breaker RESETADO")
 
     def _validar_json(self, output: dict) -> bool:
         campos = ["decisao", "direcao", "contratos", "entrada_zona", "stop", "alvo1"]

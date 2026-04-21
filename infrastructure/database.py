@@ -51,7 +51,7 @@ class Database:
         c.execute("""
             INSERT INTO trades (data, direcao, contratos, entrada, saida,
                           resultado_pts, resultado_reais, motivo_saida, score, modo, ordem_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             trade.get("data", datetime.now().isoformat()),
             trade.get("direcao"),

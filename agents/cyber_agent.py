@@ -26,6 +26,21 @@ class CyberAgent(BaseAgent):
             temperature=0.1,
         )
         self.redis = redis_state
+        self._pesos = self._carregar_pesos()
+
+    def _carregar_pesos(self) -> dict:
+        pesos_padrao = {"confianca": 0.5, "forca_fluxo": 0.25, "atr": 0.15, "cvd": 0.1}
+        try:
+            config_path = r"H:\Meu Drive\Cyber Trade\Winfut\openclaw_win.json"
+            if os.path.exists(config_path):
+                with open(config_path) as f:
+                    config = json.load(f)
+                    pesos = config.get("pesos_score", {})
+                    if pesos:
+                        return pesos
+        except:
+            pass
+        return pesos_padrao
 
     async def decidir(self, cyber_input: dict) -> dict:
         sniper_mode = self._ler_sniper_mode(cyber_input.get("estado_sistema", {}))
@@ -147,7 +162,7 @@ Retorne JSON:
         if flow_forca < 40:
             return self._decisao_cancelar("Fluxo fraco", {}, sniper_mode)
 
-        score = min(100, graph_conf + flow_forca // 2)
+        score = self._calcular_score_dinamico(graph, flow)
         
         if score >= score_min:
             direcao = graph_sinal
@@ -175,6 +190,24 @@ Retorne JSON:
             }
 
         return self._decisao_cancelar(f"Score {score} < {score_min}", {}, sniper_mode)
+
+    def _calcular_score_dinamico(self, graph: dict, flow: dict) -> int:
+        w = self._pesos
+        conf = graph.get("confianca", 0)
+        forca = flow.get("forca_fluxo", 0)
+        atr = graph.get("atr14_5m", 100)
+        cvd = flow.get("cvd_total", 0)
+
+        atr_score = min(100, int(atr / 10))
+        cvd_score = min(100, max(-100, int(cvd / 100)))
+
+        score = (
+            conf * w.get("confianca", 0.5) +
+            forca * w.get("forca_fluxo", 0.25) +
+            atr_score * w.get("atr", 0.15) +
+            cvd_score * w.get("cvd", 0.1)
+        )
+        return min(100, int(score))
 
     def _ler_sniper_mode(self, estado: dict) -> bool:
         if self.redis:
