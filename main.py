@@ -27,8 +27,8 @@ class CyberTradeWIN:
         self.operacoes_hoje = 0
 
     async def iniciar(self):
-        logger.info("🚀 Cyber Trade WIN v2.1 iniciado")
-        logger.info(f"📋 Modo: {'PAPER' if PAPER_MODE else 'REAL'}")
+        logger.info("[CYBER] WIN v2.1 started")
+        logger.info(f"[MODE] {'PAPER' if PAPER_MODE else 'REAL'}")
 
         await self._iniciar_componentes()
         await self._loop()
@@ -53,14 +53,14 @@ class CyberTradeWIN:
             from agents.exec_agent import ExecAgent
             self.exec = ExecAgent(self.redis_state, self.db, self.tg)
 
-            logger.info("✅ Componentes inicializados")
+            logger.info("[OK] Components initialized")
         except Exception as e:
-            logger.error(f"❌ Erro init: {e}")
+            logger.error(f"[ERR] Init: {e}")
 
     async def _loop(self):
         while True:
             if self._cutoff_atingido():
-                logger.info("🛑 Cutoff atingido")
+                logger.info("[STOP] Cutoff reached")
                 break
 
             await self._ciclo()
@@ -71,8 +71,8 @@ class CyberTradeWIN:
         return agora.hour >= 17 and agora.minute >= 30
 
     async def _ciclo(self):
-        logger.info("🔄 Ciclo...")
-        self.tg.alertar("🟢 Ciclo ativo")
+        logger.info("[CYCLE] Running...")
+        self.tg.alertar("[OK] Cycle active")
 
 
 if __name__ == "__main__":

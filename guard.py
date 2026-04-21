@@ -22,14 +22,14 @@ class Watchdog:
         self.redis_state = None
 
     async def iniciar(self):
-        logger.info("🛡️ GUARD iniciado")
+        logger.info("[GUARD] Started")
         await self._loop()
 
     async def _loop(self):
         while self.ativo:
             await asyncio.sleep(30)
             if self._verificar_horario():
-                logger.info("🛑 Cutoff 17:30 → GUARD encerra")
+                logger.info("[GUARD] Cutoff 17:30 - stopping")
                 self.ativo = False
                 break
 
