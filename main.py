@@ -6,6 +6,9 @@ import logging
 import os
 import json
 from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from utils.indicadores import (
     calcular_ema,
