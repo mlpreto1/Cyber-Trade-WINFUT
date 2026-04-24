@@ -10,7 +10,8 @@ from pathlib import Path
 
 logger = logging.getLogger("pixel_server")
 
-HTML_PATH = r"H:\Meu Drive\Cyber Trade\Winfut\agents.html"
+_BASE_DIR = Path(__file__).parent
+HTML_PATH = str(_BASE_DIR / "agents.html")
 PORT = 8765
 
 
@@ -42,7 +43,7 @@ def start_server(port: int = PORT):
         def log_message(self, format, *args):
             pass
     
-    os.chdir(os.path.dirname(HTML_PATH) or '.')
+    os.chdir(_BASE_DIR)
     
     with socketserver.TCPServer(("", port), Handler) as httpd:
         logger.info(f"🎮 Pixel Agents: http://localhost:{port}")

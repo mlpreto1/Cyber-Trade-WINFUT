@@ -156,6 +156,7 @@ class DataProvider:
     def __init__(self, source: str = "mt5"):
         self.source = source
         self.redis_state = None
+        self.symbol = os.getenv("TRADE_SYMBOL", "WIN$") # Prioriza o símbolo do .env
         self._ultimo_preco = 130000.0
         self._ibov_base = 130000.0
         self._preco_win_valido = False
@@ -363,6 +364,7 @@ class DataProvider:
 
     async def _get_preco_mt5(self) -> float:
         if not self._init_mt5():
+            logger.error("[MT5] Falha critica: MT5 nao inicializado!")
             return self._calcular_preco_win_deterministico(await self._get_ibov_atual())
 
         # Try multiple WIN symbols
@@ -373,13 +375,15 @@ class DataProvider:
                     preco = float(tick.last)
                     self._preco_win_valido = True
                     self._ultimo_preco = preco
-                    logger.info(f"[MT5] {sym} price: {preco}")
+                    logger.info(f"[MT5] ✅ SUCESSO: {sym} price: {preco}")
                     return preco
+                else:
+                    logger.debug(f"[MT5] Simbolo {sym} nao retornou tick valido")
             except Exception as e:
-                logger.warning(f"[MT5] Erro {sym}: {e}")
+                logger.warning(f"[MT5] Erro ao buscar {sym}: {e}")
                 continue
 
-        logger.warning("[MT5] Nenhum preco WIN encontrado")
+        logger.error("[MT5] ❌ FALHA: Nenhum simbolo de WIN encontrado no terminal!")
         return await self._get_preco_mt5_historico()
 
     async def _get_preco_mt5_historico(self) -> float:
@@ -698,3 +702,8 @@ class DataProvider:
             })
 
         return trades
+
+    def limpar_cache(self):
+        """Limpa o cache de candles — chamado após troca de dia histórico."""
+        self._cache_candles = {}
+        logger.info("[DATA] Cache de candles limpo")

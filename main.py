@@ -1,5 +1,5 @@
 # main.py
-# CYBER TRADE WIN v3.0 — PATCHED: Cutoff 17:00, Heartbeat, CVD Tape, Cache IBOV
+# CYBER TRADE WIN v3.1 — PATCHED: Cutoff 17:15, Shutdown gracioso, Horarios proibidos, Config loader, Rate limit TG
 
 import asyncio
 import logging
@@ -19,6 +19,8 @@ from utils.indicadores import (
     detectar_tendencia,
     calcular_confianca
 )
+from utils.horarios import cutoff_atingido, horario_proibido, get_status_horario, minutos_para_cutoff
+from utils.config_loader import carregar_config, get_nivel_capital, get_score_pesos, get_risk_params
 from utils.pixel_agents import (
     print_pixel_header,
     print_agente,
@@ -85,27 +87,71 @@ class CyberTradeWIN:
             import traceback
             traceback.print_exc()
 
+    async def _shutdown_gracioso(self):
+        logger.info("[SHUTDOWN] Iniciando encerramento gracioso...")
+        self.tg.alertar("🛑 [SHUTDOWN] Cutoff atingido — encerrando sistema")
+
+        try:
+            if self.exec:
+                posicao = await self.exec.get_posicao_atual()
+                if posicao and posicao.get("ativa"):
+                    logger.warning(f"[SHUTDOWN] Posição aberta detectada: {posicao}")
+                    self.tg.alertar(
+                        f"⚠️ [SHUTDOWN] Fechando posição aberta: "
+                        f"{posicao.get('direcao')} @ {posicao.get('preco_entrada')}"
+                    )
+                    try:
+                        await self.exec.fechar_posicao(motivo="cutoff_horario")
+                        self._salvar_log("EXEC", "Posição fechada no cutoff")
+                    except Exception as e:
+                        logger.error(f"[SHUTDOWN] Erro ao fechar posição: {e}")
+                        self.tg.alertar(f"🚨 [SHUTDOWN] ERRO ao fechar posição: {e}")
+                else:
+                    logger.info("[SHUTDOWN] Nenhuma posição aberta")
+
+            if self.db:
+                resultado_final = self.db.get_resultado_hoje()
+                ops_total = self.db.get_trades_hoje()
+                capital = self.redis_state.get_capital() if self.redis_state else 0
+                logger.info(f"[SHUTDOWN] Resultado dia: R${resultado_final:.2f} | Ops: {ops_total} | Capital: R${capital:.2f}")
+                self.tg.alertar(
+                    f"📊 [RESULTADO DIA]\nPnL: R${resultado_final:.2f}\nOperações: {ops_total}\nCapital: R${capital:.2f}"
+                )
+
+            if self.redis_state:
+                self.redis_state.set("sistema_status", "ENCERRADO")
+                self.redis_state.set("ultimo_encerramento", datetime.now().isoformat())
+
+        except Exception as e:
+            logger.error(f"[SHUTDOWN] Erro no encerramento gracioso: {e}")
+            import traceback
+            traceback.print_exc()
+
+        logger.info("[SHUTDOWN] Encerramento completo")
+
     async def _loop(self):
         ciclo = 0
         print_pixel_header()
-        logger.info("[CYBER] WIN v3.0 - Pixel Agents Mode")
+        logger.info("[CYBER] WIN v3.1 - Pixel Agents Mode")
         
         while True:
             ciclo += 1
             logger.info(f"[CYCLE {ciclo}] Running...")
-            # Heartbeat para o Watchdog
             try:
                 self.redis_state.set("heartbeat_main", datetime.now().isoformat(), ex=90)
             except Exception:
                 pass
 
-            # Poll Telegram callbacks
             await self._poll_telegram()
 
             if self._cutoff_atingido():
-                logger.info("[STOP] Cutoff reached")
-                self.tg.alertar("[STOP] Cutoff 17:30 - encerrando")
+                logger.info("[STOP] Cutoff 17:15 WIN — encerrando")
+                await self._shutdown_gracioso()
                 break
+
+            mins = minutos_para_cutoff()
+            if mins <= 15 and mins > 0:
+                logger.warning(f"[WARN] {mins} minutos para cutoff 17:15")
 
             await self._ciclo_completo(ciclo)
             await asyncio.sleep(10)
@@ -120,17 +166,46 @@ class CyberTradeWIN:
                     if data == "proximo_dia":
                         self.tg.alertar("🔄 Buscando dia anterior...")
                         self.data_provider.avanca_proximo_dia()
-                        self.data_provider._cache_candles = {}
+                        if hasattr(self.data_provider, "limpar_cache"):
+                            self.data_provider.limpar_cache()
+                        elif hasattr(self.data_provider, "_cache_candles"):
+                            self.data_provider._cache_candles = {}
+                            logger.debug("[POLL] Cache de candles limpo via atributo interno")
         except Exception as e:
             logger.debug(f"Telegram poll: {e}")
 
     def _cutoff_atingido(self) -> bool:
-        agora = datetime.now()
-        cutoff = agora.replace(hour=17, minute=0, second=0, microsecond=0)
-        return agora >= cutoff
+        return cutoff_atingido()
 
     async def _ciclo_completo(self, num: int):
         try:
+            proibido, motivo_horario = horario_proibido()
+            # --- [SISTEMA] Atualiza Dashboard mesmo em horario proibido ---
+            # Mover a atualização do HTML para cá para o dashboard não congelar no almoço
+            if 'indicadores' in locals() and 'fluxo' in locals() and 'contexto' in locals():
+                capital_atual = self.redis_state.get_capital() or 1000.0
+                resultado_hoje = self.db.get_resultado_hoje()
+                pnl_dia_pct = (resultado_hoje / capital_atual) * 100 if capital_atual > 0 else 0.0
+                
+                salvar_html({
+                    "agentes": {
+                        "architect": indicadores,
+                        "morpheus": fluxo,
+                        "oracle": contexto,
+                        "neo": {} if 'resultado' not in locals() else resultado,
+                    },
+                    "sistema": {
+                        "preco": preco_atual,
+                        "pnl": pnl_dia_pct,
+                        "ops": self.operacoes_hoje,
+                        "modo": "PAPER" if PAPER_MODE else "REAL",
+                        "info_dados": info_dados,
+                    },
+                    "decisao": {} if 'resultado' not in locals() else resultado,
+                })
+
+
+
             logger.info(f"[CYCLE {num}] Step 1: Getting data...")
 
             candles_5m = await self.data_provider.get_dados_candle("5min", 50)
@@ -139,8 +214,13 @@ class CyberTradeWIN:
             trades = await self.data_provider.get_trades()
             info_dados = self.data_provider.get_info_dados()
 
+            candles_15m = []
             if len(candles_5m) >= 20:
-                indicadores = self._calcular_indicadores(candles_5m)
+                try:
+                    candles_15m = await self.data_provider.get_dados_candle("15min", 30)
+                except Exception:
+                    candles_15m = []
+                indicadores = self._calcular_indicadores(candles_5m, candles_15m=candles_15m)
                 fluxo = self._calcular_fluxo(book, trades)
                 contexto = await self._calcular_contexto()
 
@@ -188,7 +268,7 @@ class CyberTradeWIN:
             self._salvar_log("SYSTEM", f"Ciclo {num} | Preço: {preco_atual} | Dados: {info_dados.get('ultimo_candle', 'N/A')}")
 
             if PAPER_MODE:
-                self.tg.alertar(f"[{num}] Preco: {preco_atual} | Dados: {info_dados.get('ultimo_candle', 'N/A')} | Analisando...")
+                self._alertar_telegram(f"[{num}] Preco: {preco_atual} | Dados: {info_dados.get('ultimo_candle', 'N/A')} | Analisando...")
 
             logger.info(f"[CYCLE {num}] Step 2: Running AGENTS (LLM)...")
 
@@ -236,8 +316,25 @@ class CyberTradeWIN:
                 exec_ok = await self.exec.armar(resultado) if self.exec else False
 
                 if exec_ok and self.exec:
-                    asyncio.create_task(self.exec.executar_gatilho(resultado.get("gatilho", {})))
-                    self.tg.alertar(f"[ARMADO] {direcao} | Score:{score} | Entrada:{entrada} | Stop:{stop}")
+                    gatilho = resultado.get("gatilho", {})
+
+                    def _on_gatilho_done(task: asyncio.Task):
+                        if task.cancelled():
+                            logger.warning("[EXEC] Task gatilho cancelada")
+                            self.tg.alertar("⚠️ [EXEC] Task de gatilho foi cancelada")
+                        elif task.exception():
+                            err = task.exception()
+                            logger.error(f"[EXEC] FALHA NO GATILHO: {err}", exc_info=err)
+                            self.tg.alertar(f"🚨 [EXEC] Gatilho falhou: {type(err).__name__}: {err}")
+                            self._salvar_log("EXEC", f"ERRO gatilho: {err}")
+
+                    task = asyncio.create_task(self.exec.executar_gatilho(gatilho))
+                    task.add_done_callback(_on_gatilho_done)
+
+                    self._alertar_telegram(
+                        f"🎯 [ARMADO] {direcao} | Score:{score} | Entrada:{entrada} | Stop:{stop}",
+                        prioridade="urgente"
+                    )
                     self._salvar_log("EXEC", f"Trade armado: {direcao} @ {entrada}")
                     logger.info(f"[CYCLE {num}] >>> ARMAR {direcao} Score:{score}")
                 else:
@@ -247,7 +344,7 @@ class CyberTradeWIN:
                     resultado["motivo"] = "Erro execução"
             else:
                 motivo = resultado.get("motivo", "sem motivo")
-                self.tg.alertar(f"[OK] {resultado.get('decisao', 'CANCELAR')} - {motivo}")
+                self._alertar_telegram(f"[OK] {resultado.get('decisao', 'CANCELAR')} - {motivo}")
                 logger.info(f"[CYCLE {num}] >>> {resultado.get('decisao')}: {motivo}")
 
         except Exception as e:
@@ -278,15 +375,21 @@ class CyberTradeWIN:
             pnl_dia_pct = (resultado_hoje / capital_atual) * 100 if capital_atual > 0 else 0.0
             self.operacoes_hoje = self.db.get_trades_hoje()
 
+            nivel_info = get_nivel_capital(capital_atual)
+            status_horario = get_status_horario()
+
             entrada = {
                 "estado_sistema": {
                     "capital_atual": capital_atual,
                     "operacoes_hoje": self.operacoes_hoje,
                     "pnl_dia_pct": round(pnl_dia_pct, 2),
                     "resultado_hoje": resultado_hoje,
-                    "nivel_atual": 1,
+                    "nivel_atual": nivel_info["nivel"],
+                    "nivel_nome": nivel_info["nome"],
+                    "max_contratos": nivel_info["max_contratos"],
+                    "score_minimo": nivel_info["score_minimo"],
                     "modo": "PAPER" if PAPER_MODE else "REAL",
-                    "horario_atual": datetime.now().strftime("%H:%M")
+                    "horario": status_horario,
                 },
                 "graph": indicadores,
                 "flow": fluxo,
@@ -307,7 +410,7 @@ class CyberTradeWIN:
             traceback.print_exc()
             return {"decisao": "CANCELAR", "motivo": f"Erro agentes: {e}"}
 
-    def _calcular_indicadores(self, candles):
+    def _calcular_indicadores(self, candles, candles_15m=None):
         if not candles or len(candles) < 20:
             return {
                 "sinal": "NEUTRO",
@@ -330,14 +433,23 @@ class CyberTradeWIN:
         rsi = calcular_rsi(candles, 14)
         macd = calcular_macd(candles)
 
-        tendencia, sinal = detectar_tendencia(ema9, ema21)
+        tendencia_5m, sinal = detectar_tendencia(ema9, ema21)
         confianca = calcular_confianca(sinal, ema9, ema21, rsi, atr14)
+
+        if candles_15m and len(candles_15m) >= 20:
+            closes_15m = [float(c["close"]) for c in candles_15m]
+            ema9_15m = calcular_ema(closes_15m, 9)
+            ema21_15m = calcular_ema(closes_15m, 21)
+            tendencia_15m, _ = detectar_tendencia(ema9_15m, ema21_15m)
+        else:
+            tendencia_15m = "INDISPONIVEL_15M"
+            logger.debug("[ARCHITECT] Candles 15m não disponíveis — tendencia_master indisponível")
 
         return {
             "sinal": sinal,
             "confianca": confianca,
-            "tendencia_5m": tendencia,
-            "tendencia_master_15m": tendencia,
+            "tendencia_5m": tendencia_5m,
+            "tendencia_master_15m": tendencia_15m,
             "atr14_5m": round(atr14, 1),
             "rsi_14": round(rsi, 1),
             "ema9_5m": round(ema9, 1),
@@ -433,14 +545,38 @@ class CyberTradeWIN:
             tendencia_mercado = "INDEFINIDA"
             ibov_variacao = 0.0
 
-        hora = datetime.now().hour
+        if ibov_variacao > 1.5:
+            status_macro = "BULL_FORTE"
+            score_contexto = 80
+        elif ibov_variacao > 0.5:
+            status_macro = "BULL"
+            score_contexto = 65
+        elif ibov_variacao >= -0.5:
+            status_macro = "NEUTRO"
+            score_contexto = 50
+        elif ibov_variacao >= -1.5:
+            status_macro = "BEAR"
+            score_contexto = 35
+        else:
+            status_macro = "BEAR_FORTE"
+            score_contexto = 15
+
+        if regime == "TRENDING":
+            score_contexto = min(100, score_contexto + 10)
+        elif regime == "RANGING":
+            score_contexto = max(0, score_contexto - 10)
+        elif regime in ("INDISPONIVEL", "INDEFINIDO"):
+            score_contexto = 25
+
+        status_horario = get_status_horario()
 
         return {
-            "status_macro": "NORMAL",
+            "status_macro": status_macro,
             "regime_mercado": regime,
             "tendencia_mercado": tendencia_mercado,
-            "alerta_finalizacao": hora >= 17 and datetime.now().minute >= 0,  # >= 17:00 avisa
-            "score_contexto": 25,
+            "alerta_finalizacao": status_horario["alerta_pre_cutoff"],
+            "minutos_para_cutoff": status_horario["minutos_para_cutoff"],
+            "score_contexto": score_contexto,
             "ibov_variacao": round(ibov_variacao, 2),
         }
 
@@ -471,6 +607,33 @@ class CyberTradeWIN:
             logger.warning(f"[ORACLE] IBOV error: {e}")
 
         return 0.0
+
+    def _alertar_telegram(self, mensagem: str, prioridade: str = "normal"):
+        import time
+
+        if not hasattr(self, "_tg_ultimo_envio"):
+            self._tg_ultimo_envio = 0
+            self._tg_fila_normal = []
+
+        agora = time.time()
+
+        if prioridade == "urgente":
+            try:
+                self.tg.alertar(mensagem)
+                self._tg_ultimo_envio = agora
+            except Exception as e:
+                logger.warning(f"[TG] Falha ao enviar urgente: {e}")
+            return
+
+        MIN_INTERVALO = 8.0
+        if (agora - self._tg_ultimo_envio) >= MIN_INTERVALO:
+            try:
+                self.tg.alertar(mensagem)
+                self._tg_ultimo_envio = agora
+            except Exception as e:
+                logger.warning(f"[TG] Falha ao enviar: {e}")
+        else:
+            logger.debug(f"[TG] Throttled: {mensagem[:50]}...")
 
     def _salvar_log(self, agente: str, mensagem: str):
         try:

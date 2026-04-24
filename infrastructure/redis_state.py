@@ -10,6 +10,7 @@ logger = logging.getLogger("redis_state")
 
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
 
 _redis_client = None
 _usar_mock = False
@@ -25,6 +26,7 @@ def _get_redis():
             _redis_client = redis.Redis(
                 host=REDIS_HOST,
                 port=REDIS_PORT,
+                password=REDIS_PASSWORD,
                 decode_responses=True,
                 socket_connect_timeout=2,
                 socket_timeout=2,

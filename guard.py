@@ -7,6 +7,7 @@ import os
 import sys
 import signal
 from datetime import datetime
+from utils.horarios import cutoff_atingido
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,9 +58,9 @@ class Watchdog:
 
             # 1. Verificar cutoff de horário
             if self._verificar_horario():
-                logger.info("[GUARD] Cutoff 17:00 WIN — stopping")
+                logger.info("[GUARD] Cutoff 17:15 WIN — stopping")
                 if self.tg:
-                    self.tg.alertar("🛑 [GUARD] Cutoff 17:00 WIN — encerrando sistema")
+                    self.tg.alertar("🛑 [GUARD] Cutoff 17:15 WIN — encerrando sistema")
                 self.ativo = False
                 break
 
@@ -90,10 +91,7 @@ class Watchdog:
                     logger.error(f"[GUARD] Redis check error: {e}")
 
     def _verificar_horario(self) -> bool:
-        agora = datetime.now()
-        # WIN cutoff: 17:00 BRT
-        cutoff = agora.replace(hour=17, minute=0, second=0, microsecond=0)
-        return agora >= cutoff
+        return cutoff_atingido()
 
     def ping(self):
         """Chamado pelo main.py a cada ciclo via Redis — não diretamente."""
